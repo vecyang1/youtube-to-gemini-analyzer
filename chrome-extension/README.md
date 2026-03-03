@@ -39,12 +39,12 @@ A Chrome extension that enables one-click YouTube video analysis with Google AI 
 The extension uses the following analysis template:
 
 ```
-各自提取 important info and aruguments, speaker,action to do, include as much as detail. Output them all.
-//use original langauge as the context below.
+Extract important info and arguments, speaker, action to do, include as much detail as possible. Output them all.
+//Use original language as the context below.
 
-////Combine tone, intonation, and emotional analysis. (integrate inside, don't write seperately)
-//针对关键术语 可用原语言的.
-// 综述全文,不要break down by timeline.
+////Combine tone, intonation, and emotional analysis. (integrate inside, don't write separately)
+//For key terminology, you can use the original language.
+// Summarize the entire text, don't break down by timeline.
 
 //Extract the useful AI prompt if mentioned.
 ```
