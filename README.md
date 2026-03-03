@@ -2,6 +2,15 @@
 
 A Chrome extension that enables one-click YouTube video analysis with Google AI Studio (Gemini).
 
+<img width="496" height="270" alt="image" src="https://github.com/user-attachments/assets/88c1f01b-48e0-448f-be2b-324a881fd2da" />
+
+<img width="479" height="215" alt="Google Chrome 2026-03-03 22 42 31" src="https://github.com/user-attachments/assets/4d1f7424-573f-492e-b71b-7c71bb993612" />
+
+<img width="474" height="270" alt="Google Chrome 2026-03-03 22 42 39" src="https://github.com/user-attachments/assets/99e17195-4d62-46bd-88ed-83d5c634b0fa" />
+
+<img width="465" height="349" alt="Google Chrome 2026-03-03 22 42 48" src="https://github.com/user-attachments/assets/606bee3e-2ef3-4b6a-b6d5-3838d6333601" />
+
+
 ## Features
 
 - **One-Click Analysis**: Click the extension icon on any YouTube video page
