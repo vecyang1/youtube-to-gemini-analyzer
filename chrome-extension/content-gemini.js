@@ -1,14 +1,14 @@
 // Content script for Google AI Studio
 (async function() {
-  console.log('[YT2Gemini] Content script loaded at:', new Date().toISOString());
-  console.log('[YT2Gemini] Page URL:', window.location.href);
+  console.log('[VidMind] Content script loaded at:', new Date().toISOString());
+  console.log('[VidMind] Page URL:', window.location.href);
 
   // Check if there's a pending analysis
   const data = await chrome.storage.local.get('pendingAnalysis');
-  console.log('[YT2Gemini] Pending analysis data:', data);
+  console.log('[VidMind] Pending analysis data:', data);
 
   if (!data.pendingAnalysis) {
-    console.log('[YT2Gemini] No pending analysis');
+    console.log('[VidMind] No pending analysis');
     return;
   }
 
@@ -16,77 +16,71 @@
 
   // Check if analysis is recent (within 30 seconds)
   if (Date.now() - timestamp > 30000) {
-    console.log('[YT2Gemini] Analysis expired');
+    console.log('[VidMind] Analysis expired');
     await chrome.storage.local.remove('pendingAnalysis');
     return;
   }
 
-  console.log('[YT2Gemini] Processing analysis for:', videoUrl);
-  console.log('[YT2Gemini] Return to tab:', returnToTabId);
+  console.log('[VidMind] Processing analysis for:', videoUrl);
+  console.log('[VidMind] Return to tab:', returnToTabId);
 
   // Wait for page to fully load
-  console.log('[YT2Gemini] Waiting for textarea...');
+  console.log('[VidMind] Waiting for textarea...');
   await waitForElement('textarea[formcontrolname="promptText"]', 10000);
-  console.log('[YT2Gemini] Textarea found!');
+  console.log('[VidMind] Textarea found!');
 
   // Find the textarea
   const textarea = document.querySelector('textarea[formcontrolname="promptText"]');
   if (!textarea) {
-    console.error('[YT2Gemini] Textarea not found');
+    console.error('[VidMind] Textarea not found');
     return;
   }
 
-  // Step 1: Paste YouTube URL via clipboard to trigger file loader
-  console.log('[YT2Gemini] Step 1: Writing to clipboard...');
+  // Step 1: Paste YouTube URL to trigger file loader
+  console.log('[VidMind] Step 1: Inserting YouTube URL...');
 
   try {
+    // Try clipboard first (works if tab is focused)
     await navigator.clipboard.writeText(videoUrl);
-    console.log('[YT2Gemini] Clipboard write successful');
-
-    // Add human-like delay before focusing
-    await sleep(150 + Math.random() * 100);
-
-    textarea.focus();
-    await sleep(50 + Math.random() * 50);
-
-    // Use more realistic paste simulation with trusted event
-    console.log('[YT2Gemini] Step 2: Simulating paste event...');
-
-    // Set the value directly first (more reliable)
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-    nativeInputValueSetter.call(textarea, videoUrl);
-
-    // Then trigger events with isTrusted-like properties
-    const inputEvent = new InputEvent('input', {
-      bubbles: true,
-      cancelable: true,
-      inputType: 'insertFromPaste',
-      data: videoUrl
-    });
-    textarea.dispatchEvent(inputEvent);
-
-    const pasteEvent = new ClipboardEvent('paste', {
-      bubbles: true,
-      cancelable: true,
-      clipboardData: new DataTransfer()
-    });
-    pasteEvent.clipboardData.setData('text/plain', videoUrl);
-    textarea.dispatchEvent(pasteEvent);
-
-    console.log('[YT2Gemini] YouTube URL pasted, waiting for file loader...');
+    console.log('[VidMind] Clipboard write successful');
   } catch (clipboardError) {
-    console.error('[YT2Gemini] Clipboard operation failed:', clipboardError);
-    console.log('[YT2Gemini] This likely means the tab is not focused/active');
-
-    // If clipboard fails, we can't trigger video loading properly
-    // Clear pending analysis and notify user
-    await chrome.storage.local.remove('pendingAnalysis');
-    alert('Failed to load video. Please ensure the tab is active when analysis starts.');
-    return;
+    console.log('[VidMind] Clipboard unavailable (tab not focused), using direct insertion');
   }
 
+  // Add human-like delay before focusing
+  await sleep(150 + Math.random() * 100);
+
+  textarea.focus();
+  await sleep(50 + Math.random() * 50);
+
+  // Use more realistic paste simulation with trusted event
+  console.log('[VidMind] Step 2: Simulating paste event...');
+
+  // Set the value directly first (more reliable)
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  nativeInputValueSetter.call(textarea, videoUrl);
+
+  // Then trigger events with isTrusted-like properties
+  const inputEvent = new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    inputType: 'insertFromPaste',
+    data: videoUrl
+  });
+  textarea.dispatchEvent(inputEvent);
+
+  const pasteEvent = new ClipboardEvent('paste', {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: new DataTransfer()
+  });
+  pasteEvent.clipboardData.setData('text/plain', videoUrl);
+  textarea.dispatchEvent(pasteEvent);
+
+  console.log('[VidMind] YouTube URL inserted, waiting for file loader...');
+
   // Wait for file reference to load - smart detection with human-like timing
-  console.log('[YT2Gemini] Waiting for video to load...');
+  console.log('[VidMind] Waiting for video to load...');
 
   // Add initial human-like delay
   await sleep(300 + Math.random() * 200);
@@ -103,21 +97,21 @@
     const currentTextareaValue = textarea.value;
 
     if (fileChip || currentTextareaValue !== videoUrl) {
-      console.log('[YT2Gemini] Video loaded! (detected in ~' + (i * 200) + 'ms)');
+      console.log('[VidMind] Video loaded! (detected in ~' + (i * 200) + 'ms)');
       videoLoaded = true;
       break;
     }
   }
 
   if (!videoLoaded) {
-    console.warn('[YT2Gemini] Video load timeout, continuing anyway...');
+    console.warn('[VidMind] Video load timeout, continuing anyway...');
   }
 
   // Human-like buffer after detection
   await sleep(400 + Math.random() * 200);
 
   // Step 2: Add the analysis prompt after the video loads
-  console.log('[YT2Gemini] Step 3: Adding analysis prompt...');
+  console.log('[VidMind] Step 3: Adding analysis prompt...');
 
   // Human-like delay before focusing again
   await sleep(200 + Math.random() * 150);
@@ -143,7 +137,7 @@
 
   textarea.dispatchEvent(new Event('change', { bubbles: true }));
 
-  console.log('[YT2Gemini] Prompt inserted');
+  console.log('[VidMind] Prompt inserted');
 
   // Human-like wait for form to update
   await sleep(500 + Math.random() * 300);
@@ -151,7 +145,7 @@
   // Find and click the run button
   const runButton = findRunButton();
   if (runButton) {
-    console.log('[YT2Gemini] Clicking run button');
+    console.log('[VidMind] Clicking run button');
 
     // Add human-like delay before clicking
     await sleep(200 + Math.random() * 200);
@@ -198,7 +192,7 @@
 
     // If we should return to previous tab, do it after a longer delay
     if (returnToTabId) {
-      console.log('[YT2Gemini] Switching back to tab:', returnToTabId);
+      console.log('[VidMind] Switching back to tab:', returnToTabId);
       setTimeout(() => {
         chrome.runtime.sendMessage({
           action: 'switchToTab',
@@ -210,7 +204,7 @@
     // Start heartbeat to keep connection alive
     startHeartbeat();
   } else {
-    console.error('[YT2Gemini] Run button not found');
+    console.error('[VidMind] Run button not found');
   }
 
   // Clear pending analysis
@@ -276,13 +270,13 @@ function startHeartbeat() {
     }
 
     if (!stopButton && !progressIcon) {
-      console.log('[YT2Gemini] Analysis complete, stopping heartbeat');
+      console.log('[VidMind] Analysis complete, stopping heartbeat');
       clearInterval(heartbeatInterval);
 
       // Notify background script that analysis is complete
       chrome.runtime.sendMessage({ action: 'analysisComplete' });
     } else {
-      console.log('[YT2Gemini] Heartbeat - analysis in progress');
+      console.log('[VidMind] Heartbeat - analysis in progress');
 
       // Aggressive presence simulation to prevent tab throttling
       // Simulate mouse movement

@@ -2,21 +2,21 @@
 // Allows toggling between Enter and Cmd+Enter for submission
 
 (function() {
-  console.log('[YT2Gemini] Keyboard interceptor loaded');
+  console.log('[VidMind] Keyboard interceptor loaded');
 
   let enterBehavior = 'submit'; // 'newline' or 'submit' - default to submit
 
   // Load saved preference
   chrome.storage.sync.get(['enterBehavior'], (result) => {
     enterBehavior = result.enterBehavior || 'submit';
-    console.log('[YT2Gemini] Enter behavior:', enterBehavior);
+    console.log('[VidMind] Enter behavior:', enterBehavior);
   });
 
   // Listen for preference changes
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'sync' && changes.enterBehavior) {
       enterBehavior = changes.enterBehavior.newValue;
-      console.log('[YT2Gemini] Enter behavior changed to:', enterBehavior);
+      console.log('[VidMind] Enter behavior changed to:', enterBehavior);
     }
   });
 
@@ -56,10 +56,10 @@
   function clickRunButton() {
     const runButton = findRunButton();
     if (runButton && !runButton.disabled) {
-      console.log('[YT2Gemini] Triggering run button via keyboard');
+      console.log('[VidMind] Triggering run button via keyboard');
       runButton.click();
     } else {
-      console.log('[YT2Gemini] Run button not available');
+      console.log('[VidMind] Run button not available');
     }
   }
 
