@@ -1,6 +1,6 @@
-# YouTube to Gemini Analyzer
+# VidMind
 
-A Chrome extension that enables one-click YouTube video analysis with Google AI Studio (Gemini).
+**AI Video Analyzer for YouTube** - One-click AI-powered YouTube video analysis with Google Gemini.
 
 <img width="496" height="270" alt="image" src="https://github.com/user-attachments/assets/88c1f01b-48e0-448f-be2b-324a881fd2da" />
 

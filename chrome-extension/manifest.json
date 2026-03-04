@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "YouTube to Gemini Analyzer",
+  "name": "VidMind - AI Video Analyzer for YouTube",
   "version": "1.0.0",
-  "description": "One-click YouTube video analysis with Google AI Studio",
+  "description": "One-click AI-powered YouTube video analysis with Google Gemini",
   "permissions": [
     "activeTab",
     "scripting",
