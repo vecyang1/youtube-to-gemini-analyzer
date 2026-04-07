@@ -160,14 +160,17 @@ Prompts can be customized via **Settings tab** in the popup UI, or by editing `p
 
 ## Version
 
-- **Current**: v1.1.0 (uncommitted)
+- **Current**: v1.1.1
 - **Created**: 2026-03-03
-- **Last Updated**: 2026-03-20
-- **Status**: Active development — i18n + settings + history features added
+- **Last Updated**: 2026-04-07
+- **Status**: Production — Chrome Web Store ready
 
 ## Changelog
 
-### v1.1.0 (in progress)
+### v1.1.1
+- Fixed zh_CN locale JSON parse error (unescaped quotes in settingShortcutHint)
+
+### v1.1.0
 - Added tabbed popup UI (Analyze, History, Stats, Settings)
 - Added i18n support (English, Chinese, Japanese)
 - Added custom prompt modal (Cmd+Shift+X)
@@ -175,6 +178,9 @@ Prompts can be customized via **Settings tab** in the popup UI, or by editing `p
 - Added centralized multilingual prompts (`prompts.js`)
 - Added analysis history tracking
 - Added usage statistics
+- Hardened keyboard-interceptor.js with heuristic selectors
+- Extracted popup CSS to separate file
+- Improved error messages in popup
 
 ### v1.0.1
 - Fixed Angular form state bugs with `execCommand` emulation
