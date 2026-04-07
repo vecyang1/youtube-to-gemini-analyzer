@@ -13,7 +13,7 @@
   "settingAutoSwitch": { "message": "自动切换到 Gemini 标签页" },
   "settingQuickAnalyzeShortcut": { "message": "快速分析快捷键：" },
   "settingCustomPromptShortcut": { "message": "自定义提问快捷键：" },
-  "settingShortcutHint": { "message": "点击上方"自定义"按钮修改键盘快捷键" },
+  "settingShortcutHint": { "message": "点击上方「自定义」按钮修改键盘快捷键" },
   "settingAutoSwitchBack": { "message": "分析后自动切回原标签页" },
   "settingAutoSwitchBackDesc": { "message": "启动分析后自动返回 YouTube 标签页" },
   "settingEnterToSubmit": { "message": "Enter 提交（Cmd+Enter 换行）" },
