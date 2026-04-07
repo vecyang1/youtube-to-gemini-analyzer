@@ -2,225 +2,31 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body {
-      width: 450px;
-      max-height: 600px;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      margin: 0;
-      overflow-y: auto;
-    }
-    h3 {
-      margin: 0 0 12px 0;
-      font-size: 16px;
-      color: #202124;
-    }
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-      border-bottom: 2px solid #e0e0e0;
-    }
-    .tab {
-      padding: 8px 16px;
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      color: #5f6368;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      transition: all 0.2s;
-    }
-    .tab.active {
-      color: #1a73e8;
-      border-bottom-color: #1a73e8;
-      font-weight: 500;
-    }
-    .tab-content {
-      display: none;
-    }
-    .tab-content.active {
-      display: block;
-    }
-    .status {
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      font-size: 14px;
-    }
-    .status.info {
-      background: #e8f0fe;
-      color: #1967d2;
-    }
-    .status.success {
-      background: #e6f4ea;
-      color: #137333;
-    }
-    .status.error {
-      background: #fce8e6;
-      color: #c5221f;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #1a73e8;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-      margin-bottom: 8px;
-    }
-    button:hover {
-      background: #1765cc;
-    }
-    button:disabled {
-      background: #dadce0;
-      cursor: not-allowed;
-    }
-    .video-info {
-      font-size: 13px;
-      color: #5f6368;
-      margin-bottom: 12px;
-      padding: 8px;
-      background: #f8f9fa;
-      border-radius: 4px;
-    }
-    .settings {
-      margin-top: 16px;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      color: #5f6368;
-      margin-bottom: 6px;
-      font-weight: 500;
-    }
-    textarea {
-      width: 100%;
-      min-height: 100px;
-      padding: 8px;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 12px;
-      resize: vertical;
-      box-sizing: border-box;
-    }
-    .btn-secondary {
-      background: #5f6368;
-    }
-    .btn-secondary:hover {
-      background: #4a4d51;
-    }
-    .shortcut-box {
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      margin-top: 12px;
-    }
-    .shortcut-display {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    .shortcut-key {
-      font-family: monospace;
-      background: white;
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: 1px solid #dadce0;
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .history-item {
-      padding: 10px;
-      background: #f8f9fa;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      font-size: 13px;
-    }
-    .history-title {
-      font-weight: 500;
-      color: #202124;
-      margin-bottom: 4px;
-    }
-    .history-meta {
-      color: #5f6368;
-      font-size: 12px;
-    }
-    .history-status {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 500;
-      margin-left: 8px;
-    }
-    .history-status.running {
-      background: #e8f0fe;
-      color: #1967d2;
-    }
-    .history-status.completed {
-      background: #e6f4ea;
-      color: #137333;
-    }
-    .stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 12px;
-    }
-    .stat-card {
-      padding: 16px;
-      background: #f8f9fa;
-      border-radius: 8px;
-      text-align: center;
-    }
-    .stat-value {
-      font-size: 28px;
-      font-weight: 600;
-      color: #1a73e8;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #5f6368;
-      margin-top: 4px;
-    }
-    .empty-state {
-      text-align: center;
-      padding: 32px;
-      color: #5f6368;
-      font-size: 14px;
-    }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h3>VidMind</h3>
-
+  <h3 style="margin: 0; margin-bottom: 12px;">VidMind</h3>
   <div class="tabs">
-    <button class="tab active" data-tab="analyze">Analyze</button>
-    <button class="tab" data-tab="history">History</button>
-    <button class="tab" data-tab="stats">Stats</button>
-    <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab active" data-tab="analyze" data-i18n="tabAnalyze">Analyze</button>
+    <button class="tab" data-tab="history" data-i18n="tabHistory">History</button>
+    <button class="tab" data-tab="stats" data-i18n="tabStats">Stats</button>
+    <button class="tab" data-tab="settings" data-i18n="tabSettings">Settings</button>
   </div>
 
   <!-- Analyze Tab -->
   <div class="tab-content active" id="analyze-tab">
-    <div id="status" class="status info">Ready to analyze</div>
     <div id="videoInfo" class="video-info" style="display: none;"></div>
-    <button id="analyzeBtn">Analyze with Gemini (Background)</button>
+    <button id="analyzeBtn" class="primary-btn" disabled data-i18n="btnAnalyze">Analyze with Gemini</button>
+    <div id="status" class="status" data-i18n="statusNotYoutube">Please open a YouTube video page</div>
   </div>
 
   <!-- History Tab -->
   <div class="tab-content" id="history-tab">
+    <div class="history-header">
+      <h3 style="margin: 0;" data-i18n="tabHistory">Recent Analysis</h3>
+      <button id="clearHistoryBtn" class="secondary-btn" data-i18n="historyClear">Clear History</button>
+    </div>
     <div id="historyList"></div>
-    <button id="clearHistoryBtn" class="btn-secondary">Clear History</button>
   </div>
 
   <!-- Stats Tab -->
@@ -228,38 +34,43 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value" id="totalAnalyses">0</div>
-        <div class="stat-label">Total Analyses</div>
+        <div class="stat-label" data-i18n="statsTotal">Total Analyses</div>
       </div>
       <div class="stat-card">
         <div class="stat-value" id="todayAnalyses">0</div>
-        <div class="stat-label">Today</div>
+        <div class="stat-label" data-i18n="statsToday">Today</div>
       </div>
-    </div>
-    <div class="stat-card" style="margin-top: 12px;">
-      <div class="stat-label">First Use</div>
-      <div id="firstUse" style="font-size: 14px; color: #202124; margin-top: 4px;">-</div>
+      <div class="stat-card">
+        <div class="stat-value" id="firstUse" style="font-size: 16px;">-</div>
+        <div class="stat-label" data-i18n="statsFirstUse">First Use</div>
+      </div>
     </div>
   </div>
 
   <!-- Settings Tab -->
   <div class="tab-content" id="settings-tab">
     <div class="shortcut-box">
-      <label>Keyboard Shortcut:</label>
+      <label data-i18n="settingQuickAnalyzeShortcut">Quick Analyze Shortcut:</label>
       <div class="shortcut-display">
         <span id="currentShortcut" class="shortcut-key">Cmd+Shift+A</span>
-        <button id="customizeShortcut" class="btn-secondary" style="width: auto; padding: 6px 12px; font-size: 12px;">Customize</button>
+        <button id="customizeShortcut" class="btn-secondary" style="width: auto; padding: 6px 12px; font-size: 12px;" data-i18n="btnCustomize">Customize</button>
       </div>
-      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">
-        Click Customize to open Chrome shortcuts page
+      
+      <label style="margin-top: 12px;" data-i18n="settingCustomPromptShortcut">Ask Custom Prompt Shortcut:</label>
+      <div class="shortcut-display">
+        <span id="customPromptShortcut" class="shortcut-key">Cmd+Shift+X</span>
+      </div>
+      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;" data-i18n="settingShortcutHint">
+        Click Customize above to modify keyboard shortcuts
       </div>
     </div>
 
     <div class="shortcut-box" style="margin-top: 12px;">
       <label style="display: flex; align-items: center; cursor: pointer;">
         <input type="checkbox" id="autoSwitchBack" style="margin-right: 8px;">
-        <span>Auto switch back to original tab</span>
+        <span data-i18n="settingAutoSwitchBack">Auto switch back to original tab</span>
       </label>
-      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">
+      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;" data-i18n="settingAutoSwitchBackDesc">
         After starting analysis, automatically return to your YouTube tab
       </div>
     </div>
@@ -267,24 +78,42 @@
     <div class="shortcut-box" style="margin-top: 12px;">
       <label style="display: flex; align-items: center; cursor: pointer;">
         <input type="checkbox" id="enterToSubmit" style="margin-right: 8px;" checked>
-        <span>Enter to submit (Cmd+Enter for newline)</span>
+        <span data-i18n="settingEnterToSubmit">Enter to submit (Cmd+Enter for newline)</span>
       </label>
-      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">
+      <div style="font-size: 11px; color: #5f6368; margin-top: 4px;" data-i18n="settingEnterToSubmitDesc">
         Uncheck to use Enter for newline, Cmd+Enter to submit
       </div>
     </div>
 
     <div class="settings" style="margin-top: 16px;">
-      <label>Custom Analysis Prompt:</label>
-      <textarea id="customPrompt" placeholder="Enter your custom prompt..."></textarea>
-      <div style="font-size: 11px; color: #5f6368; margin-top: 4px; margin-bottom: 8px;">
+      <div class="form-group">
+        <label for="promptLanguage" data-i18n="settingOutputLang">Output Language:</label>
+        <select id="promptLanguage" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; margin-bottom: 4px;">
+          <option value="en">English</option>
+          <option value="zh">简体中文</option>
+          <option value="ja">日本語</option>
+        </select>
+        <div style="font-size: 11px; color: #5f6368; margin-bottom: 12px;" data-i18n="settingOutputLangDesc">
+          Choose the language for the AI's default analysis translation
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="customPrompt" data-i18n="settingCustomPrompt">Custom Analysis Prompt:</label>
+        <textarea id="customPrompt"></textarea>
+      </div>
+      <div style="font-size: 11px; color: #5f6368; margin-top: 4px; margin-bottom: 8px;" data-i18n="settingCustomPromptHint">
         💡 Press Cmd+Enter (Mac) or Ctrl+Enter (Windows) to save
       </div>
-      <button id="savePrompt" class="btn-secondary">Save Prompt</button>
-      <button id="resetPrompt" class="btn-secondary">Reset to Default</button>
+      
+      <div style="display: flex; gap: 8px;">
+        <button id="savePrompt" class="primary-btn" style="flex: 1;" data-i18n="btnSave">Save</button>
+        <button id="resetPrompt" class="secondary-btn" style="flex: 1;" data-i18n="btnReset">Reset to Default</button>
+      </div>
     </div>
   </div>
 
+  <script src="prompts.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,14 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "VidMind - AI Video Analyzer for YouTube",
-  "version": "1.0.0",
-  "description": "One-click AI-powered YouTube video analysis with Google Gemini",
+  "name": "__MSG_extensionName__",
+  "version": "1.1.0",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
+  "author": "Vec, Gemini",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "tabs",
-    "notifications"
+    "notifications",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
@@ -39,6 +42,13 @@
         "mac": "Command+Shift+A"
       },
       "description": "Analyze current YouTube video"
+    },
+    "ask-custom-prompt": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Ask custom question about video"
     }
   },
   "icons": {

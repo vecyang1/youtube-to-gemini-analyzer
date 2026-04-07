@@ -1,19 +1,66 @@
-// Default analysis prompt template
-const DEFAULT_ANALYSIS_PROMPT = `各自提取 important info and aruguments, speaker,action to do, include as much as detail. Output them all.
-//use original langauge as the context below.
-
-////Combine tone, intonation, and emotional analysis. (integrate inside, don't write seperately)
-//针对关键术语 可用原语言的.
-// 综述全文,不要break down by timeline.
-
-//Extract the useful AI prompt if mentioned.`;
+// Import centralized prompts
+importScripts('prompts.js');
 
 // Track active analysis tabs to keep them alive
 let activeAnalysisTabs = new Set();
 
+// --- Context Menu Setup ---
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'vidmind-analyze-link',
+    title: 'Analyze with VidMind',
+    contexts: ['link'],
+    targetUrlPatterns: [
+      '*://www.youtube.com/watch*',
+      '*://youtube.com/watch*',
+      '*://youtu.be/*',
+      '*://m.youtube.com/watch*'
+    ]
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === 'vidmind-analyze-link') {
+    const url = info.linkUrl;
+    if (url) {
+      // Normalize youtu.be short links to full URL
+      const normalizedUrl = normalizeYouTubeUrl(url);
+      if (normalizedUrl) {
+        handleVideoAnalysis(normalizedUrl);
+      }
+    }
+  }
+});
+
+function normalizeYouTubeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    // Handle youtu.be short links
+    if (parsed.hostname === 'youtu.be') {
+      const videoId = parsed.pathname.slice(1);
+      return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+    // Handle m.youtube.com
+    if (parsed.hostname === 'm.youtube.com') {
+      parsed.hostname = 'www.youtube.com';
+      return parsed.toString();
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analyzeVideo') {
-    handleVideoAnalysis(request.videoUrl)
+    handleVideoAnalysis(request.videoUrl, request.prompt)
+      .then(() => sendResponse({ success: true }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'analyzeWithCustomPrompt') {
+    handleVideoAnalysis(request.videoUrl, request.prompt, request.videoTitle)
       .then(() => sendResponse({ success: true }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -22,7 +69,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analysisStarted') {
     if (sender.tab?.id) {
       activeAnalysisTabs.add(sender.tab.id);
-      console.log('[YT2Gemini] Tracking analysis tab:', sender.tab.id);
+      console.log('[VidMind] Tracking analysis tab:', sender.tab.id);
     }
     sendResponse({ success: true });
     return true;
@@ -31,7 +78,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'analysisComplete') {
     if (sender.tab?.id) {
       activeAnalysisTabs.delete(sender.tab.id);
-      console.log('[YT2Gemini] Analysis complete for tab:', sender.tab.id);
+      console.log('[VidMind] Analysis complete for tab:', sender.tab.id);
 
       // Update completion in history
       updateHistoryCompletion(sender.tab.id);
@@ -40,8 +87,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icon.png',
-        title: 'YT2Gemini Analysis Complete',
-        message: 'Video analysis finished. Check Google AI Studio tab.',
+        title: chrome.i18n.getMessage('extensionName') || 'VidMind',
+        message: chrome.i18n.getMessage('statusSuccess') || 'Video analysis finished. Check Google AI Studio tab.',
         priority: 2
       });
     }
@@ -53,7 +100,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Switch back to the original tab
     if (request.tabId) {
       chrome.tabs.update(request.tabId, { active: true }).catch(err => {
-        console.error('[YT2Gemini] Failed to switch tab:', err);
+        console.error('[VidMind] Failed to switch tab:', err);
       });
     }
     sendResponse({ success: true });
@@ -98,19 +145,43 @@ setInterval(() => {
   });
 }, 3000);
 
-async function handleVideoAnalysis(videoUrl) {
-  // Get custom prompt from storage or use default
-  const settings = await chrome.storage.sync.get(['customPrompt', 'autoSwitchBack']);
-  const prompt = settings.customPrompt || DEFAULT_ANALYSIS_PROMPT;
-  const autoSwitchBack = settings.autoSwitchBack !== false; // Default true
+async function handleVideoAnalysis(videoUrl, inlinePrompt = null, providedTitle = null) {
+  const geminiUrl = 'https://aistudio.google.com/prompts/new_chat';
+
+  // Get current active tab to position the new tab right next to it
+  const currentTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const currentTab = currentTabs[0];
+
+  const createOptions = { url: geminiUrl, active: true };
+  if (currentTab) {
+    createOptions.index = currentTab.index + 1;
+  }
+
+  // Fire tab creation with error handling
+  let tabPromise;
+  try {
+    tabPromise = chrome.tabs.create(createOptions);
+  } catch (error) {
+    console.error('[VidMind] Failed to create tab:', error);
+    throw new Error('Could not open AI Studio tab');
+  }
+
+  // Meanwhile, fetch storage
+  const settingsPromise = chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'promptLanguage']);
+
+  const [tab, settings] = await Promise.all([tabPromise, settingsPromise]);
+  const tabId = tab.id;
+
+  const promptLanguage = settings.promptLanguage || 'en';
+  const defaultLangPrompt = DEFAULT_PROMPTS[promptLanguage] || DEFAULT_PROMPTS['en'];
+  const prompt = inlinePrompt || settings.customPrompt || defaultLangPrompt;
+  const autoSwitchBack = settings.autoSwitchBack === true; // Default false to prevent network timeouts when tab is backgrounded
 
   // Extract video info
   const videoId = new URL(videoUrl).searchParams.get('v');
-  const videoTitle = await getVideoTitle(videoUrl);
+  const videoTitle = providedTitle || await getVideoTitle(videoUrl);
 
-  // Get current active tab to return to later
-  const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const returnToTabId = currentTab?.id;
+  const returnToTabId = currentTabs[0]?.id;
 
   // Store video URL, prompt, and return tab info for content script
   await chrome.storage.local.set({
@@ -122,16 +193,7 @@ async function handleVideoAnalysis(videoUrl) {
     }
   });
 
-  console.log('[YT2Gemini] Starting analysis:', { videoUrl, autoSwitchBack, returnToTabId });
-
-  // Always create a new tab in FOREGROUND to ensure video loads
-  const geminiUrl = 'https://aistudio.google.com/prompts/new_chat';
-  const tab = await chrome.tabs.create({
-    url: geminiUrl,
-    active: true
-  });
-  const tabId = tab.id;
-  console.log('[YT2Gemini] Created new tab:', tabId);
+  console.log('[VidMind] Started analysis and injected data for tab:', tabId);
 
   // Add to history
   await addToHistory({
@@ -228,7 +290,23 @@ chrome.commands.onCommand.addListener(async (command) => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (tab.url && tab.url.includes('youtube.com/watch')) {
-      await handleVideoAnalysis(tab.url);
+      await handleVideoAnalysis(tab.url, null, tab.title);
+    }
+  } else if (command === 'ask-custom-prompt') {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (tab.url && tab.url.includes('youtube.com/watch')) {
+      // Inject CSS
+      chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: ['prompt-modal.css']
+      }).catch(err => console.error("Failed to inject CSS:", err));
+
+      // Inject JS
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['prompt-modal.js']
+      }).catch(err => console.error("Failed to inject JS:", err));
     }
   }
 });

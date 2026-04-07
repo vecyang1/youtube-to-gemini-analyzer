@@ -24,17 +24,21 @@
   console.log('[VidMind] Processing analysis for:', videoUrl);
   console.log('[VidMind] Return to tab:', returnToTabId);
 
-  // Wait for page to fully load
-  console.log('[VidMind] Waiting for textarea...');
-  await waitForElement('textarea[formcontrolname="promptText"]', 10000);
-  console.log('[VidMind] Textarea found!');
+  // Wait for the visible prompt textarea to fully load
+  console.log('[VidMind] Waiting for visible textarea to load...');
+  let textarea = null;
+  for (let i = 0; i < 30; i++) { // wait up to 15 seconds (30 * 500ms)
+    textarea = findHeuristicTextarea();
+    if (textarea) break;
+    await sleep(500);
+  }
 
-  // Find the textarea
-  const textarea = document.querySelector('textarea[formcontrolname="promptText"]');
   if (!textarea) {
-    console.error('[VidMind] Textarea not found');
+    console.error('[VidMind] Timeout: Heuristic search failed to find visible textarea');
     return;
   }
+  console.log('[VidMind] Visible textarea found!');
+
 
   // Step 1: Paste YouTube URL to trigger file loader
   console.log('[VidMind] Step 1: Inserting YouTube URL...');
@@ -56,18 +60,15 @@
   // Use more realistic paste simulation with trusted event
   console.log('[VidMind] Step 2: Simulating paste event...');
 
-  // Set the value directly first (more reliable)
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  nativeInputValueSetter.call(textarea, videoUrl);
+  // Set the value directly. execCommand simulates the most realistic user input.
+  const insertedVideo = document.execCommand('insertText', false, videoUrl);
+  if (!insertedVideo) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(textarea, videoUrl);
 
-  // Then trigger events with isTrusted-like properties
-  const inputEvent = new InputEvent('input', {
-    bubbles: true,
-    cancelable: true,
-    inputType: 'insertFromPaste',
-    data: videoUrl
-  });
-  textarea.dispatchEvent(inputEvent);
+    // Then trigger events with standard properties that Angular understands
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 
   const pasteEvent = new ClipboardEvent('paste', {
     bubbles: true,
@@ -90,8 +91,8 @@
   for (let i = 0; i < 40; i++) {
     await sleep(150 + Math.random() * 100);
 
-    // Check if video chip appeared (various selectors for Gemini's file chips)
-    const fileChip = document.querySelector('[data-test-id="file-chip"], .file-chip, [role="button"][aria-label*="video"], [aria-label*="YouTube"]');
+    // Check if video chip appeared heuristically (look for elements containing video related info or icons near the input)
+    const fileChip = document.querySelector('mat-chip, .mat-mdc-chip, [role="button"][aria-label*="video"], [aria-label*="YouTube"], [data-test-id*="chip"], [data-test-id*="file"]');
 
     // Or check if textarea value changed (video URL might be replaced with chip)
     const currentTextareaValue = textarea.value;
@@ -119,19 +120,18 @@
   textarea.focus();
   await sleep(100 + Math.random() * 100);
 
-  const currentValue = textarea.value;
-  const newValue = currentValue + '\n\n' + prompt;
+  const newValue = '\n\n' + prompt;
 
-  // Use native setter for more realistic behavior
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  nativeInputValueSetter.call(textarea, newValue);
+  // Set the value directly. execCommand simulates most realistic user input.
+  const insertedPrompt = document.execCommand('insertText', false, newValue);
+  if (!insertedPrompt) {
+    const currentValue = textarea.value;
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(textarea, currentValue + newValue);
 
-  // Trigger events with realistic timing
-  textarea.dispatchEvent(new InputEvent('input', {
-    bubbles: true,
-    cancelable: true,
-    inputType: 'insertText'
-  }));
+    // Trigger standard events with realistic timing
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 
   await sleep(50 + Math.random() * 50);
 
@@ -142,8 +142,16 @@
   // Human-like wait for form to update
   await sleep(500 + Math.random() * 300);
 
-  // Find and click the run button
-  const runButton = findRunButton();
+  // Find and click the run button - wait until it is actually active
+  let runButton = null;
+  for (let i = 0; i < 20; i++) {
+    runButton = findRunButton();
+    if (runButton) {
+      break;
+    }
+    await sleep(100);
+  }
+
   if (runButton) {
     console.log('[VidMind] Clicking run button');
 
@@ -221,56 +229,136 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 function findRunButton() {
-  // Try multiple selectors for the run button
-  const selectors = [
-    'button[jslog*="250044"]', // Run button with specific jslog
+  // Try standard selectors first
+  const exactSelectors = [
+    'button[jslog*="250044"]', // Historic Run button
+    'button[jslog*="225921"]', // Newer Run button
     'ms-run-button button',
     'button.ctrl-enter-submits'
   ];
 
-  for (const selector of selectors) {
+  for (const selector of exactSelectors) {
     try {
       const button = document.querySelector(selector);
-      if (button && !button.disabled) {
+      if (button && isButtonActive(button)) {
         return button;
       }
-    } catch (e) {
-      // Selector might not be valid, continue
-    }
+    } catch (e) {}
   }
 
-  // Fallback: find button with "Run" or progress icon
-  const buttons = document.querySelectorAll('button');
-  for (const button of buttons) {
-    const text = button.textContent.trim();
-    if (text === 'Run' || text === 'Stop' || button.querySelector('.material-symbols-outlined')) {
-      if (!button.disabled) {
-        return button;
-      }
+  // Heuristic search: Find any button that looks or acts like a "Submit/Run" button near the prompt box
+  return findHeuristicRunButton();
+}
+
+/**
+ * Checks if a button is visibly enabled (both native and ARIA attributes)
+ */
+function isButtonActive(button) {
+  return !button.disabled && 
+         button.getAttribute('aria-disabled') !== 'true' && 
+         button.offsetParent !== null; // It must be visible
+}
+
+/**
+ * Intelligently searches the DOM for the active input textarea based on visual and semantic hints
+ * rather than hardcoded attributes which change frequently.
+ */
+function findHeuristicTextarea() {
+  const allTextareas = Array.from(document.querySelectorAll('textarea'));
+  
+  // Filter 1: Must be visible on screen
+  const visibleTextareas = allTextareas.filter(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0);
+  
+  if (visibleTextareas.length === 1) return visibleTextareas[0];
+  
+  // Filter 2: Score them based on semantic hints
+  let bestScore = -1;
+  let bestTextarea = null;
+  
+  for (const t of visibleTextareas) {
+    let score = 0;
+    
+    // Look at placeholders
+    const placeholder = (t.getAttribute('placeholder') || '').toLowerCase();
+    if (placeholder.includes('prompt') || placeholder.includes('type') || placeholder.includes('ask')) score += 5;
+    
+    // Look at ARIA labels
+    const ariaLabel = (t.getAttribute('aria-label') || '').toLowerCase();
+    if (ariaLabel.includes('prompt') || ariaLabel.includes('chat') || ariaLabel.includes('input')) score += 5;
+    
+    // Look at existing forms/containers
+    const formControl = (t.getAttribute('formcontrolname') || '').toLowerCase();
+    if (formControl.includes('prompt')) score += 3;
+    
+    // Most likely it"s editable and autosizing
+    if (t.hasAttribute('cdktextareaautosize')) score += 2;
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestTextarea = t;
     }
   }
+  
+  return bestScore >= 0 ? bestTextarea : (visibleTextareas[visibleTextareas.length - 1] || null);
+}
 
+/**
+ * Intelligently searches for the "Run/Submit" button based on icons and semantic text.
+ */
+function findHeuristicRunButton() {
+  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+  const activeButtons = allButtons.filter(isButtonActive);
+  
+  for (const b of activeButtons) {
+    const text = (b.textContent || '').trim().toLowerCase();
+    const ariaLabel = (b.getAttribute('aria-label') || '').toLowerCase();
+    const title = (b.getAttribute('title') || '').toLowerCase();
+    
+    // Does it textually say "Run" or "Submit"?
+    if (text === 'run' || text === 'submit' || text === 'send') return b;
+    if (ariaLabel === 'run' || ariaLabel === 'submit' || ariaLabel === 'send message') return b;
+    if (title === 'run' || title === 'submit' || title === 'send') return b;
+    
+    // Does it contain a send/play icon?
+    const hasMaterialIcon = Array.from(b.querySelectorAll('.material-symbols-outlined, mat-icon'))
+      .some(icon => {
+        const iconText = (icon.textContent || '').trim().toLowerCase();
+        return iconText === 'send' || iconText === 'play_arrow' || iconText === 'arrow_upward';
+      });
+      
+    if (hasMaterialIcon) return b;
+  }
+  
   return null;
 }
 
 function startHeartbeat() {
   // Keep the page active with aggressive presence simulation
   let heartbeatInterval = setInterval(() => {
-    // Check if analysis is still running by looking for Stop button or spinner
-    const progressIcon = document.querySelector('.material-symbols-outlined.spin');
+    // Check if analysis is still running heuristically
+    
+    // 1. Look for a spinning/animated indicator near buttons
+    const animatedElements = document.querySelectorAll('.spin, [style*="animation"], svg animateTransform, mat-progress-spinner');
+    const isSpinning = animatedElements.length > 0;
 
-    // Find Stop button by checking button text
-    let stopButton = null;
-    const buttons = document.querySelectorAll('button');
-    for (const button of buttons) {
-      if (button.textContent.trim() === 'Stop') {
-        stopButton = button;
-        break;
+    // 2. Look for a Stop button among all buttons
+    let isStopping = false;
+    const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+    for (const button of allButtons) {
+      const text = (button.textContent || '').trim().toLowerCase();
+      const title = (button.getAttribute('title') || '').toLowerCase();
+      const ariaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
+      
+      if (text === 'stop' || title === 'stop' || ariaLabel === 'stop' || ariaLabel === 'stop generating') {
+        if (isButtonActive(button)) {
+          isStopping = true;
+          break;
+        }
       }
     }
 
-    if (!stopButton && !progressIcon) {
-      console.log('[VidMind] Analysis complete, stopping heartbeat');
+    if (!isStopping && !isSpinning) {
+      console.log('[VidMind] Analysis complete (no Stop button or spinner found), stopping heartbeat');
       clearInterval(heartbeatInterval);
 
       // Notify background script that analysis is complete
