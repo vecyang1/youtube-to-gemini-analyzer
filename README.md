@@ -118,6 +118,14 @@ chrome-extension/
 - Check browser console for errors
 - The heartbeat runs every 5 seconds while analysis is in progress
 
+## Changelog
+
+### Version 1.0.1 (UI Automation Fix)
+- **DOM Visibility Update:** Google AI Studio introduced multiple textareas with the same selector. The script now explicitly filters for the *visible* textarea (`offsetParent !== null`).
+- **Input Event Simulation:** Upgraded text insertion from manual value setting to `document.execCommand('insertText')` for perfect emulation of human keyboard input, bypassing Angular's state constraints.
+- **Run Button Detection:** Added support for the new `jslog="225921"` identifier and updated the disabled state check to use `aria-disabled="true"` to match Material Design changes.
+- **Syntax Fix:** Resolved scoping issues with `nativeInputValueSetter` across different execution blocks.
+
 ## License
 
 MIT

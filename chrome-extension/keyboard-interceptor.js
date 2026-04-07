@@ -5,10 +5,12 @@
   console.log('[VidMind] Keyboard interceptor loaded');
 
   let enterBehavior = 'submit'; // 'newline' or 'submit' - default to submit
+  let preferenceLoaded = false;
 
   // Load saved preference
   chrome.storage.sync.get(['enterBehavior'], (result) => {
     enterBehavior = result.enterBehavior || 'submit';
+    preferenceLoaded = true;
     console.log('[VidMind] Enter behavior:', enterBehavior);
   });
 
@@ -20,13 +22,39 @@
     }
   });
 
+  /**
+   * Finds the active prompt textarea using heuristic scoring
+   * instead of hardcoded selectors that break on UI changes.
+   */
+  function findPromptTextarea(target) {
+    if (target.tagName !== 'TEXTAREA') return null;
+
+    // Must be visible
+    if (!target.offsetParent || target.getBoundingClientRect().height === 0) return null;
+
+    let score = 0;
+    const placeholder = (target.getAttribute('placeholder') || '').toLowerCase();
+    const ariaLabel = (target.getAttribute('aria-label') || '').toLowerCase();
+    const formControl = (target.getAttribute('formcontrolname') || '').toLowerCase();
+
+    if (placeholder.includes('prompt') || placeholder.includes('type') || placeholder.includes('ask')) score += 3;
+    if (ariaLabel.includes('prompt') || ariaLabel.includes('chat') || ariaLabel.includes('input')) score += 3;
+    if (formControl.includes('prompt')) score += 3;
+    if (target.hasAttribute('cdktextareaautosize')) score += 2;
+
+    // If it's a textarea on aistudio.google.com, give it a baseline score
+    if (window.location.hostname.includes('aistudio.google.com')) score += 1;
+
+    return score > 0 ? target : null;
+  }
+
   // Intercept keyboard events on the textarea
   document.addEventListener('keydown', (e) => {
-    // Only handle events on the prompt textarea
-    const target = e.target;
-    if (!target.matches('textarea[formcontrolname="promptText"]')) {
-      return;
-    }
+    // Don't intercept until preferences are loaded
+    if (!preferenceLoaded) return;
+
+    const target = findPromptTextarea(e.target);
+    if (!target) return;
 
     const isEnter = e.key === 'Enter';
     const isCmdEnter = (e.metaKey || e.ctrlKey) && e.key === 'Enter';
@@ -64,19 +92,23 @@
   }
 
   function insertNewline(textarea) {
+    // Try execCommand first (most compatible with Angular)
+    const inserted = document.execCommand('insertText', false, '\n');
+    if (inserted) return;
+
+    // Fallback: manual insertion with null safety
+    const descriptor = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      'value'
+    );
+    if (!descriptor || !descriptor.set) return;
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const value = textarea.value;
-
-    // Insert newline at cursor position
     const newValue = value.substring(0, start) + '\n' + value.substring(end);
 
-    // Use native setter
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value'
-    ).set;
-    nativeInputValueSetter.call(textarea, newValue);
+    descriptor.set.call(textarea, newValue);
 
     // Trigger input event
     textarea.dispatchEvent(new InputEvent('input', {
@@ -89,34 +121,60 @@
     textarea.selectionStart = textarea.selectionEnd = start + 1;
   }
 
+  /**
+   * Finds the Run/Submit button using heuristic search.
+   * Matches the approach in content-gemini.js for consistency.
+   */
   function findRunButton() {
-    // Try multiple selectors for the run button
-    const selectors = [
+    // Try known selectors first (may still work)
+    const knownSelectors = [
       'button[jslog*="250044"]',
+      'button[jslog*="225921"]',
       'ms-run-button button',
       'button.ctrl-enter-submits'
     ];
 
-    for (const selector of selectors) {
+    for (const selector of knownSelectors) {
       try {
         const button = document.querySelector(selector);
-        if (button && !button.disabled) {
+        if (button && isButtonActive(button)) {
           return button;
         }
       } catch (e) {
-        // Selector might not be valid, continue
+        // Selector might not be valid
       }
     }
 
-    // Fallback: find button with "Run" text
-    const buttons = document.querySelectorAll('button');
-    for (const button of buttons) {
-      const text = button.textContent.trim();
-      if (text === 'Run' && !button.disabled) {
-        return button;
-      }
+    // Heuristic search: text content, aria-label, material icons
+    const allButtons = document.querySelectorAll('button, [role="button"]');
+    for (const button of allButtons) {
+      if (!isButtonActive(button)) continue;
+
+      const text = (button.textContent || '').trim().toLowerCase();
+      const ariaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
+      const title = (button.getAttribute('title') || '').toLowerCase();
+
+      // Text match
+      if (text === 'run' || text === 'submit' || text === 'send') return button;
+      if (ariaLabel === 'run' || ariaLabel === 'submit' || ariaLabel === 'send message') return button;
+      if (title === 'run' || title === 'submit' || title === 'send') return button;
+
+      // Material icon match
+      const hasRunIcon = Array.from(button.querySelectorAll('.material-symbols-outlined, mat-icon'))
+        .some(icon => {
+          const iconText = (icon.textContent || '').trim().toLowerCase();
+          return iconText === 'send' || iconText === 'play_arrow' || iconText === 'arrow_upward';
+        });
+
+      if (hasRunIcon) return button;
     }
 
     return null;
+  }
+
+  function isButtonActive(button) {
+    return !button.disabled &&
+           button.getAttribute('aria-disabled') !== 'true' &&
+           button.offsetParent !== null;
   }
 })();

@@ -1,30 +1,37 @@
-# YouTube to Gemini Analyzer - Project Summary
+# VidMind - AI Video Analyzer for YouTube
 
 ## What It Does
 
 A Chrome extension that automates YouTube video analysis with Google AI Studio (Gemini):
 
-1. **One-Click Trigger**: Click extension icon on any YouTube video page
-2. **Auto-Navigate**: Opens Google AI Studio in new tab
-3. **Auto-Paste**: Inserts video URL + analysis prompt
-4. **Auto-Submit**: Clicks Run button automatically
-5. **Heartbeat**: Keeps session alive during analysis
+1. **One-Click Trigger**: Click extension icon or use keyboard shortcut (Cmd+Shift+A)
+2. **Custom Prompt**: Ask any question about a video via Cmd+Shift+X or context menu
+3. **Auto-Navigate**: Opens Google AI Studio in new tab
+4. **Auto-Paste**: Inserts video URL + analysis prompt
+5. **Auto-Submit**: Clicks Run button automatically
+6. **Heartbeat**: Keeps session alive during analysis
+7. **History & Stats**: Track past analyses with usage statistics
+8. **i18n**: Full localization (English, Chinese, Japanese)
 
 ## Technical Stack
 
 - **Manifest V3**: Latest Chrome extension standard
 - **Vanilla JavaScript**: No frameworks, lightweight
-- **Chrome APIs**: storage, tabs, scripting, runtime
+- **Chrome APIs**: storage, tabs, scripting, runtime, contextMenus, notifications
 - **Content Scripts**: Injected into aistudio.google.com
+- **i18n**: Chrome `_locales` system (en, zh_CN, ja)
 
 ## Key Files
 
 ```
 chrome-extension/
-├── manifest.json          # Extension config (permissions, scripts)
-├── background.js          # Service worker (handles messages, opens tabs)
+├── manifest.json          # Extension config (permissions, scripts, i18n)
+├── background.js          # Service worker (messages, tabs, context menu)
 ├── content-gemini.js      # AI Studio automation (fills form, clicks button)
-├── popup.html/js          # User interface (extension icon popup)
+├── popup.html/js          # Tabbed UI (Analyze, History, Stats, Settings)
+├── prompts.js             # Centralized multilingual default prompts
+├── prompt-modal.js/css    # Custom prompt input modal
+├── _locales/              # i18n messages (en, zh_CN, ja)
 ├── icons/                 # Extension icons (16, 48, 128px)
 └── README.md              # User documentation
 ```
@@ -78,18 +85,20 @@ Analysis Complete
 
 ## Customization
 
-To change the prompt, edit `background.js`:
-
-```javascript
-const ANALYSIS_PROMPT = `your custom prompt here`;
-```
+Prompts can be customized via **Settings tab** in the popup UI, or by editing `prompts.js` for default templates. Supports per-language defaults (en/zh/ja).
 
 ## Architecture Highlights
+
+### Tabbed Popup UI
+- 4 tabs: Analyze, History, Stats, Settings
+- i18n via `data-i18n` attributes + `chrome.i18n.getMessage()`
+- Persistent settings via `chrome.storage.local`
 
 ### Storage Strategy
 - Uses `chrome.storage.local` for cross-tab communication
 - 30-second timeout prevents stale data
 - Clears after successful injection
+- Stores analysis history and usage stats
 
 ### Content Script Injection
 - Runs at `document_idle` for DOM readiness
@@ -99,31 +108,30 @@ const ANALYSIS_PROMPT = `your custom prompt here`;
 ### Angular Form Handling
 - Dispatches multiple events (`input`, `change`)
 - Custom event with target property for Angular
-- Triggers form validation and update
+- Uses `execCommand` keyboard emulation to bypass Angular state constraint bugs
 
 ### Heartbeat Mechanism
 - Checks every 5 seconds for running analysis
 - Simulates user activity (mousemove)
 - Stops when analysis completes
 
+### Keyboard Shortcuts & Context Menu
+- Cmd+Shift+A: Quick analyze with default prompt
+- Cmd+Shift+X: Ask custom question via prompt modal
+- Right-click context menu: "Analyze with VidMind"
+
 ## Future Enhancements
 
-1. **Configuration UI**
-   - Custom prompt templates
-   - Multiple saved prompts
-   - Heartbeat interval settings
-
-2. **Batch Processing**
+1. **Batch Processing**
    - Analyze multiple videos
    - Queue management
    - Progress tracking
 
-3. **Export Features**
+2. **Export Features**
    - Save analysis results
    - Export to Notion/Markdown
-   - History tracking
 
-4. **Error Handling**
+3. **Error Handling**
    - Retry logic
    - Better error messages
    - Fallback mechanisms
@@ -133,29 +141,46 @@ const ANALYSIS_PROMPT = `your custom prompt here`;
 - [x] Extension loads without errors
 - [x] Manifest.json validates
 - [x] Icons generated (16, 48, 128px)
-- [ ] Popup detects YouTube videos
-- [ ] Background stores data correctly
-- [ ] Content script fills textarea
-- [ ] Auto-submit works
-- [ ] Heartbeat maintains connection
+- [x] Popup detects YouTube videos
+- [x] Background stores data correctly
+- [x] Content script fills textarea
+- [x] Auto-submit works
+- [x] Heartbeat maintains connection
+- [x] i18n messages load per locale
+- [ ] Custom prompt modal works end-to-end
+- [ ] History tab records analyses
+- [ ] Stats tab displays counts correctly
+- [ ] Context menu triggers analysis
 
 ## Known Limitations
 
-1. **Selector Brittleness**: Google AI Studio UI may change
+1. **Selector Brittleness**: Google AI Studio UI changes. *(v1.0.1: Added visibility check, dynamic run button detection, `execCommand` keyboard emulation).*
 2. **Timing Issues**: Slow connections may need longer waits
 3. **Single Video**: No batch processing yet
-4. **No History**: Analysis results not saved
 
 ## Version
 
-- **Current**: v1.0.0
+- **Current**: v1.1.0 (uncommitted)
 - **Created**: 2026-03-03
-- **Status**: Ready for testing
+- **Last Updated**: 2026-03-20
+- **Status**: Active development — i18n + settings + history features added
 
-## Next Steps
+## Changelog
 
-1. Load extension in Chrome
-2. Test on YouTube video
-3. Verify auto-submission works
-4. Monitor console for errors
-5. Iterate based on feedback
+### v1.1.0 (in progress)
+- Added tabbed popup UI (Analyze, History, Stats, Settings)
+- Added i18n support (English, Chinese, Japanese)
+- Added custom prompt modal (Cmd+Shift+X)
+- Added context menu integration
+- Added centralized multilingual prompts (`prompts.js`)
+- Added analysis history tracking
+- Added usage statistics
+
+### v1.0.1
+- Fixed Angular form state bugs with `execCommand` emulation
+- Added visibility checks for multiple textareas
+- Updated dynamic run button detection
+
+### v1.0.0
+- Initial release: one-click YouTube → Gemini analysis
+- Rebranded to VidMind with custom icons

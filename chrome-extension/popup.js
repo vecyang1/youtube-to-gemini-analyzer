@@ -1,28 +1,43 @@
-const DEFAULT_PROMPT = `Extract important info and arguments, speaker, action to do, include as much detail as possible. Output them all.
-//Use original language as the context below.
+// Default prompts are now imported from prompts.js
+// using window.DEFAULT_PROMPTS
 
-////Combine tone, intonation, and emotional analysis. (integrate inside, don't write separately)
-//For key terminology, you can use the original language.
-// Summarize the entire text, don't break down by timeline.
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize i18n elements
+  document.querySelectorAll('[data-i18n]').forEach((element) => {
+    const message = chrome.i18n.getMessage(element.getAttribute('data-i18n'));
+    if (message) element.innerHTML = message;
+  });
+});
 
-//Extract the useful AI prompt if mentioned.`;
 
 const statusEl = document.getElementById('status');
 const videoInfoEl = document.getElementById('videoInfo');
 const analyzeBtn = document.getElementById('analyzeBtn');
-const customPromptTextarea = document.getElementById('customPrompt');
+const customPromptInput = document.getElementById('customPrompt');
 const savePromptBtn = document.getElementById('savePrompt');
 const resetPromptBtn = document.getElementById('resetPrompt');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const customizeShortcutBtn = document.getElementById('customizeShortcut');
+const alertBox = document.getElementById('alertBox'); // New element
+const langSelect = document.getElementById('promptLanguage'); // New element
 
 // Add Cmd+Enter / Ctrl+Enter to save prompt
-customPromptTextarea.addEventListener('keydown', (e) => {
+customPromptInput.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
     savePromptBtn.click();
   }
 });
+
+function getDefaultPrompt() {
+  const lang = langSelect.value || 'en';
+  return window.DEFAULT_PROMPTS[lang] || window.DEFAULT_PROMPTS['en'];
+}
+
+function updatePlaceholder(lang) {
+  const defaultText = window.DEFAULT_PROMPTS[lang] || window.DEFAULT_PROMPTS['en'];
+  customPromptInput.placeholder = defaultText;
+}
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -51,12 +66,23 @@ function switchTab(tabName) {
   }
 }
 
-// Load saved prompt
-chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'enterBehavior'], (result) => {
-  customPromptTextarea.value = result.customPrompt || DEFAULT_PROMPT;
+// Load saved prompt & language
+chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'enterBehavior', 'promptLanguage'], (result) => {
+  if (result.customPrompt) {
+    customPromptInput.value = result.customPrompt;
+  }
+  
+  const currentLang = result.promptLanguage || 'en';
+  langSelect.value = currentLang;
+  updatePlaceholder(currentLang);
 
-  // Update button text - always shows normal text now since we open in foreground
-  analyzeBtn.textContent = 'Analyze with Gemini';
+  // Update button text
+  analyzeBtn.textContent = chrome.i18n.getMessage('btnAnalyze') || 'Analyze with Gemini';
+});
+
+langSelect.addEventListener('change', () => {
+  chrome.storage.sync.set({ promptLanguage: langSelect.value });
+  updatePlaceholder(langSelect.value);
 });
 
 // Save auto switch back setting
@@ -72,19 +98,19 @@ document.getElementById('enterToSubmit').addEventListener('change', (e) => {
 
 // Save prompt handler
 savePromptBtn.addEventListener('click', () => {
-  const prompt = customPromptTextarea.value.trim();
+  const prompt = customPromptInput.value.trim();
   chrome.storage.sync.set({ customPrompt: prompt }, () => {
-    showStatus('Prompt saved!', 'success');
-    setTimeout(() => showStatus('Ready to analyze', 'info'), 2000);
+    showStatus(chrome.i18n.getMessage('statusPromptSaved'), 'success');
+    setTimeout(() => showStatus(chrome.i18n.getMessage('statusReady'), 'info'), 2000);
   });
 });
 
 // Reset prompt handler
 resetPromptBtn.addEventListener('click', () => {
-  customPromptTextarea.value = DEFAULT_PROMPT;
-  chrome.storage.sync.set({ customPrompt: DEFAULT_PROMPT }, () => {
-    showStatus('Prompt reset to default', 'success');
-    setTimeout(() => showStatus('Ready to analyze', 'info'), 2000);
+  customPromptInput.value = '';
+  chrome.storage.sync.set({ customPrompt: '' }, () => {
+    showStatus(chrome.i18n.getMessage('statusUsingDefault', [langSelect.value.toUpperCase()]), 'success');
+    setTimeout(() => showStatus(chrome.i18n.getMessage('statusReady'), 'info'), 2000);
   });
 });
 
@@ -95,7 +121,7 @@ customizeShortcutBtn.addEventListener('click', () => {
 
 // Clear history handler
 clearHistoryBtn.addEventListener('click', () => {
-  if (confirm('Clear all analysis history?')) {
+  if (confirm(chrome.i18n.getMessage('confirmClearHistory') || 'Clear all analysis history?')) {
     chrome.runtime.sendMessage({ action: 'clearHistory' }, () => {
       loadHistory();
     });
@@ -109,13 +135,21 @@ async function loadShortcut() {
   if (analyzeCommand && analyzeCommand.shortcut) {
     document.getElementById('currentShortcut').textContent = analyzeCommand.shortcut;
   } else {
-    document.getElementById('currentShortcut').textContent = 'Not set';
+    document.getElementById('currentShortcut').textContent = chrome.i18n.getMessage('statusNotSet') || 'Not set';
+  }
+
+  const askCustomPromptCommand = commands.find(c => c.name === 'ask-custom-prompt');
+  if (askCustomPromptCommand && askCustomPromptCommand.shortcut) {
+    document.getElementById('customPromptShortcut').textContent = askCustomPromptCommand.shortcut;
+  } else {
+    document.getElementById('customPromptShortcut').textContent = chrome.i18n.getMessage('statusNotSet') || 'Not set';
   }
 
   // Load auto switch back setting
   chrome.storage.sync.get(['autoSwitchBack', 'enterBehavior'], (result) => {
     document.getElementById('autoSwitchBack').checked = result.autoSwitchBack !== false;
-    document.getElementById('enterToSubmit').checked = result.enterBehavior === 'submit';
+    // Default to 'submit' if not set, so checkbox is checked by default
+    document.getElementById('enterToSubmit').checked = result.enterBehavior !== 'newline';
   });
 }
 
@@ -128,7 +162,7 @@ function loadHistory() {
       historyList.textContent = '';
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'empty-state';
-      emptyDiv.textContent = 'No analysis history yet';
+      emptyDiv.textContent = chrome.i18n.getMessage('emptyHistory') || 'No analysis history yet';
       historyList.appendChild(emptyDiv);
       return;
     }
@@ -139,7 +173,7 @@ function loadHistory() {
       const timeStr = date.toLocaleString();
       const duration = item.completedAt
         ? Math.round((item.completedAt - item.timestamp) / 1000) + 's'
-        : 'Running...';
+        : (chrome.i18n.getMessage('statusRunning') || 'Running...');
 
       const itemDiv = document.createElement('div');
       itemDiv.className = 'history-item';
@@ -203,11 +237,12 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (videoId) {
       videoInfoEl.textContent = `Video: ${currentTab.title}`;
       videoInfoEl.style.display = 'block';
-      statusEl.textContent = 'Ready to analyze in background';
+      statusEl.textContent = chrome.i18n.getMessage('statusReady') || 'Ready to analyze in background';
       statusEl.className = 'status info';
+      analyzeBtn.disabled = false;
     }
   } else {
-    statusEl.textContent = 'Please open a YouTube video page';
+    statusEl.textContent = chrome.i18n.getMessage('statusNotYoutube') || 'Please open a YouTube video page';
     statusEl.className = 'status error';
     analyzeBtn.disabled = true;
   }
@@ -215,7 +250,11 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
 analyzeBtn.addEventListener('click', async () => {
   analyzeBtn.disabled = true;
-  showStatus('Starting background analysis...', 'info');
+  showStatus(chrome.i18n.getMessage('statusStarting') || 'Starting background analysis...', 'info');
+
+  // Auto-save the current prompt before analyzing
+  const currentPrompt = customPromptInput.value.trim() || getDefaultPrompt();
+  chrome.storage.sync.set({ customPrompt: customPromptInput.value.trim() });
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -223,18 +262,23 @@ analyzeBtn.addEventListener('click', async () => {
 
     chrome.runtime.sendMessage({
       action: 'analyzeVideo',
-      videoUrl: videoUrl
+      videoUrl: videoUrl,
+      prompt: currentPrompt
     }, (response) => {
-      if (response.success) {
-        showStatus('Analysis running in background. You\'ll be notified when complete.', 'success');
-        setTimeout(() => window.close(), 2000);
+      if (response && response.success) {
+        showStatus(chrome.i18n.getMessage('statusSuccess') || 'Analysis started. Check Google AI Studio.', 'success');
+        setTimeout(() => window.close(), 800);
       } else {
-        showStatus('Error: ' + response.error, 'error');
+        const errorMsg = response?.error || chrome.runtime.lastError?.message || 'Unknown error';
+        const friendly = errorMsg.includes('tab') ? 'Could not open AI Studio. Try again.'
+          : errorMsg.includes('storage') ? 'Storage error. Please retry.'
+          : 'Analysis failed. Please try again.';
+        showStatus(friendly, 'error');
         analyzeBtn.disabled = false;
       }
     });
   } catch (error) {
-    showStatus('Error: ' + error.message, 'error');
+    showStatus('Analysis failed. Please try again.', 'error');
     analyzeBtn.disabled = false;
   }
 });
