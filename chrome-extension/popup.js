@@ -57,7 +57,9 @@ function switchTab(tabName) {
   document.getElementById(`${tabName}-tab`).classList.add('active');
 
   // Load data for specific tabs
-  if (tabName === 'history') {
+  if (tabName === 'queue') {
+    loadQueue();
+  } else if (tabName === 'history') {
     loadHistory();
   } else if (tabName === 'stats') {
     loadStats();
@@ -286,4 +288,81 @@ analyzeBtn.addEventListener('click', async () => {
 function showStatus(message, type) {
   statusEl.textContent = message;
   statusEl.className = `status ${type}`;
+}
+
+// --- Queue Tab ---
+const queueInput = document.getElementById('queueInput');
+const queueAddBtn = document.getElementById('queueAddBtn');
+const queueList = document.getElementById('queueList');
+const queueEmpty = document.getElementById('queueEmpty');
+const queueStatus = document.getElementById('queueStatus');
+
+queueAddBtn.addEventListener('click', () => {
+  const msg = queueInput.value.trim();
+  if (!msg) return;
+
+  chrome.storage.local.get(['messageQueue'], (data) => {
+    const queue = data.messageQueue || [];
+    queue.push(msg);
+    chrome.storage.local.set({ messageQueue: queue }, () => {
+      queueInput.value = '';
+      loadQueue();
+      // Ensure monitor is running
+      chrome.runtime.sendMessage({ action: 'startQueueMonitor' });
+    });
+  });
+});
+
+// Cmd/Ctrl+Enter to add
+queueInput.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    queueAddBtn.click();
+  }
+});
+
+function loadQueue() {
+  chrome.storage.local.get(['messageQueue'], (data) => {
+    const queue = data.messageQueue || [];
+    queueList.textContent = '';
+
+    if (queue.length === 0) {
+      queueEmpty.style.display = 'block';
+      queueStatus.textContent = '';
+      return;
+    }
+
+    queueEmpty.style.display = 'none';
+    queueStatus.textContent = `${queue.length} message${queue.length > 1 ? 's' : ''} queued \u2014 will auto-send after generation completes`;
+
+    queue.forEach((msg, i) => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #dadce0;font-size:12px;';
+
+      const num = document.createElement('span');
+      num.style.cssText = 'color:#5f6368;min-width:16px;';
+      num.textContent = `${i + 1}.`;
+
+      const text = document.createElement('span');
+      text.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      text.textContent = msg;
+      text.title = msg;
+
+      const del = document.createElement('button');
+      del.textContent = '\u2715';
+      del.style.cssText = 'background:none;border:none;color:#ea4335;cursor:pointer;font-size:14px;padding:2px 4px;';
+      del.addEventListener('click', () => {
+        chrome.storage.local.get(['messageQueue'], (d) => {
+          const q = d.messageQueue || [];
+          q.splice(i, 1);
+          chrome.storage.local.set({ messageQueue: q }, loadQueue);
+        });
+      });
+
+      item.appendChild(num);
+      item.appendChild(text);
+      item.appendChild(del);
+      queueList.appendChild(item);
+    });
+  });
 }
