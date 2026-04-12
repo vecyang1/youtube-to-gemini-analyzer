@@ -57,6 +57,43 @@
     badge.title = messageQueue.map((m, i) => `${i + 1}. ${m}`).join('\n');
   }
 
+  // --- Queue Button (visible during generation) ---
+  function getOrCreateQueueButton() {
+    let btn = document.getElementById('vidmind-queue-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'vidmind-queue-btn';
+      btn.textContent = 'Queue \u2318\u21E7\u21B5';
+      btn.title = 'Queue this message for after generation completes (Cmd+Shift+Enter)';
+      btn.style.cssText =
+        'display:none;position:fixed;bottom:18px;right:200px;z-index:99999;' +
+        'background:#1a73e8;color:#fff;border:none;border-radius:16px;' +
+        'padding:6px 14px;font:12px/1.4 Google Sans,sans-serif;' +
+        'cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3);' +
+        'transition:opacity .2s,background .15s;';
+      btn.addEventListener('mouseenter', () => { btn.style.background = '#1565c0'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = '#1a73e8'; });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const textarea = findAnyPromptTextarea();
+        if (textarea && textarea.value.trim()) {
+          handleSubmit(textarea);
+        }
+      });
+      document.body.appendChild(btn);
+    }
+    return btn;
+  }
+
+  // Show/hide Queue button based on generation state
+  let queueButtonPoll = setInterval(() => {
+    const btn = getOrCreateQueueButton();
+    const generating = isGeminiGenerating();
+    const textarea = findAnyPromptTextarea();
+    const hasText = textarea && textarea.value.trim();
+    btn.style.display = (generating && hasText) ? 'block' : 'none';
+  }, 500);
+
   // --- Gemini State Detection ---
   function isGeminiGenerating() {
     // Check for Stop button
@@ -172,14 +209,11 @@
     const isSubmitKey = enterBehavior === 'submit' ? isEnter : isCmdEnter;
     const isNewlineKey = enterBehavior === 'submit' ? isCmdEnter : isEnter;
 
-    // During generation: block ALL Enter variants to prevent Gemini stopping.
-    // Any Enter with text in textarea → queue. No newline insertion needed
-    // while Gemini is thinking — user intent is always "submit next".
-    if (isGeminiGenerating()) {
+    // Cmd+Shift+Enter = queue message (works anytime, essential during generation)
+    if (e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-
       const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
       if (textarea && textarea.value.trim()) {
         handleSubmit(textarea);
