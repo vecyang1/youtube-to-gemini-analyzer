@@ -160,31 +160,53 @@
   }
 
   // --- Keyboard Handler ---
+  // CRITICAL: During generation, we must block Enter/Cmd+Enter from reaching
+  // Gemini's native handler (which would stop generation). We intercept on
+  // ANY element, not just textarea, to prevent the Stop button from activating.
   document.addEventListener('keydown', (e) => {
     if (!preferenceLoaded) return;
+    if (e.key !== 'Enter') return;
 
+    const isEnter = !e.metaKey && !e.ctrlKey && !e.shiftKey;
+    const isCmdEnter = e.metaKey || e.ctrlKey;
+    const isSubmitKey = enterBehavior === 'submit' ? isEnter : isCmdEnter;
+    const isNewlineKey = enterBehavior === 'submit' ? isCmdEnter : isEnter;
+
+    // During generation: block submit key globally to prevent stopping
+    if (isGeminiGenerating()) {
+      if (isSubmitKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // If typed in textarea, queue the message
+        const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
+        if (textarea) {
+          handleSubmit(textarea);
+        }
+        return;
+      }
+      // Allow newline key to work normally in textarea during generation
+      if (isNewlineKey && e.target.tagName === 'TEXTAREA') {
+        e.preventDefault();
+        e.stopPropagation();
+        insertNewline(e.target);
+        return;
+      }
+    }
+
+    // Not generating: normal behavior
     const target = findPromptTextarea(e.target);
     if (!target) return;
 
-    const isEnter = e.key === 'Enter';
-    const isCmdEnter = (e.metaKey || e.ctrlKey) && e.key === 'Enter';
-
-    if (enterBehavior === 'submit') {
-      if (isEnter && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSubmit(target);
-      } else if (isCmdEnter) {
-        e.preventDefault();
-        e.stopPropagation();
-        insertNewline(target);
-      }
-    } else {
-      if (isCmdEnter) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSubmit(target);
-      }
+    if (isSubmitKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleSubmit(target);
+    } else if (isNewlineKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      insertNewline(target);
     }
   }, true);
 
