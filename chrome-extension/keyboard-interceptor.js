@@ -172,27 +172,24 @@
     const isSubmitKey = enterBehavior === 'submit' ? isEnter : isCmdEnter;
     const isNewlineKey = enterBehavior === 'submit' ? isCmdEnter : isEnter;
 
-    // During generation: block submit key globally to prevent stopping
+    // During generation: block ALL Enter variants to prevent Gemini stopping
     if (isGeminiGenerating()) {
-      if (isSubmitKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
 
-        // If typed in textarea, queue the message
+      if (isSubmitKey) {
+        // Queue the message if textarea has content
         const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
         if (textarea) {
           handleSubmit(textarea);
         }
-        return;
-      }
-      // Allow newline key to work normally in textarea during generation
-      if (isNewlineKey && e.target.tagName === 'TEXTAREA') {
-        e.preventDefault();
-        e.stopPropagation();
+      } else if (e.target.tagName === 'TEXTAREA') {
+        // Allow newline insertion inside textarea only
         insertNewline(e.target);
-        return;
       }
+      // All other Enter variants: swallowed silently
+      return;
     }
 
     // Not generating: normal behavior
