@@ -8,8 +8,8 @@
   <h3 style="margin: 0; margin-bottom: 12px;">VidMind</h3>
   <div class="tabs">
     <button class="tab active" data-tab="analyze" data-i18n="tabAnalyze">Analyze</button>
+    <button class="tab" data-tab="queue">Queue</button>
     <button class="tab" data-tab="history" data-i18n="tabHistory">History</button>
-    <button class="tab" data-tab="stats" data-i18n="tabStats">Stats</button>
     <button class="tab" data-tab="settings" data-i18n="tabSettings">Settings</button>
   </div>
 
@@ -18,6 +18,17 @@
     <div id="videoInfo" class="video-info" style="display: none;"></div>
     <button id="analyzeBtn" class="primary-btn" disabled data-i18n="btnAnalyze">Analyze with Gemini</button>
     <div id="status" class="status" data-i18n="statusNotYoutube">Please open a YouTube video page</div>
+  </div>
+
+  <!-- Queue Tab -->
+  <div class="tab-content" id="queue-tab">
+    <div style="margin-bottom: 8px;">
+      <div id="queueStatus" style="font-size: 12px; color: #5f6368; margin-bottom: 8px;"></div>
+      <textarea id="queueInput" placeholder="Type your follow-up question..." style="width:100%;height:60px;padding:8px;border:1px solid #dadce0;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+      <button id="queueAddBtn" class="primary-btn" style="margin-top:6px;width:100%;">Add to Queue</button>
+    </div>
+    <div id="queueList" style="max-height:200px;overflow-y:auto;"></div>
+    <div id="queueEmpty" class="empty-state" style="font-size:12px;color:#5f6368;">No queued messages</div>
   </div>
 
   <!-- History Tab -->

@@ -127,6 +127,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'startQueueMonitor') {
+    startQueueMonitor();
+    sendResponse({ success: true });
+    return true;
+  }
 });
 
 // Keep analysis tabs active by pinging them
@@ -310,3 +316,110 @@ chrome.commands.onCommand.addListener(async (command) => {
     }
   }
 });
+
+// --- Queue Monitor ---
+// Polls AI Studio tabs to detect when generation completes, then sends queued messages.
+let queueMonitorInterval = null;
+
+function startQueueMonitor() {
+  if (queueMonitorInterval) return;
+  console.log('[VidMind] Queue monitor started');
+
+  queueMonitorInterval = setInterval(async () => {
+    const data = await chrome.storage.local.get(['messageQueue']);
+    const queue = data.messageQueue || [];
+
+    if (queue.length === 0) {
+      clearInterval(queueMonitorInterval);
+      queueMonitorInterval = null;
+      console.log('[VidMind] Queue empty, monitor stopped');
+      return;
+    }
+
+    // Find AI Studio tabs
+    const tabs = await chrome.tabs.query({ url: 'https://aistudio.google.com/*' });
+    if (tabs.length === 0) return;
+
+    const tab = tabs[0];
+
+    // Check if generation is in progress by injecting a check script
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const buttons = document.querySelectorAll('button, [role="button"]');
+          for (const b of buttons) {
+            const text = (b.textContent || '').trim().toLowerCase();
+            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+            if ((text === 'stop' || aria === 'stop' || aria === 'stop generating') &&
+                !b.disabled && b.offsetParent !== null) {
+              return true; // still generating
+            }
+          }
+          return false;
+        }
+      });
+
+      const isGenerating = results?.[0]?.result;
+      if (isGenerating) return; // still generating, wait
+
+      // Generation complete — send next queued message
+      const msg = queue.shift();
+      await chrome.storage.local.set({ messageQueue: queue });
+      console.log('[VidMind] Sending queued message:', msg?.slice(0, 50));
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (message) => {
+          return new Promise((resolve) => {
+            // Find textarea
+            const textareas = Array.from(document.querySelectorAll('textarea'));
+            const textarea = textareas.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0);
+            if (!textarea) { resolve(false); return; }
+
+            textarea.focus();
+
+            setTimeout(() => {
+              // Insert message
+              const inserted = document.execCommand('insertText', false, message);
+              if (!inserted) {
+                const setter = Object.getOwnPropertyDescriptor(
+                  window.HTMLTextAreaElement.prototype, 'value'
+                ).set;
+                setter.call(textarea, message);
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+
+              setTimeout(() => {
+                // Find and click Run button
+                const buttons = document.querySelectorAll('button, [role="button"]');
+                for (const b of buttons) {
+                  if (b.disabled || !b.offsetParent) continue;
+                  const text = (b.textContent || '').trim().toLowerCase();
+                  const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                  const icons = Array.from(b.querySelectorAll('.material-symbols-outlined, mat-icon'));
+                  const hasIcon = icons.some(ic => {
+                    const t = (ic.textContent || '').trim().toLowerCase();
+                    return t === 'send' || t === 'play_arrow' || t === 'arrow_upward';
+                  });
+
+                  if (text === 'run' || text === 'submit' || text === 'send' ||
+                      aria === 'run' || aria === 'submit' || hasIcon) {
+                    b.click();
+                    resolve(true);
+                    return;
+                  }
+                }
+                resolve(false);
+              }, 200);
+            }, 100);
+          });
+        },
+        args: [msg]
+      });
+
+    } catch (err) {
+      console.error('[VidMind] Queue monitor error:', err);
+    }
+  }, 2000); // Check every 2 seconds
+}
