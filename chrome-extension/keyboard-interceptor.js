@@ -63,22 +63,24 @@
     if (!btn) {
       btn = document.createElement('button');
       btn.id = 'vidmind-queue-btn';
-      btn.textContent = 'Queue (Ctrl+J)';
-      btn.title = 'Queue this message for after generation completes (Ctrl+J)';
+      btn.textContent = '\u23F3 Queue (\u2318J)';
+      btn.title = 'Type your follow-up, then click to queue (or press Cmd/Ctrl+J)';
       btn.style.cssText =
-        'display:none;position:fixed;bottom:18px;right:200px;z-index:99999;' +
-        'background:#1a73e8;color:#fff;border:none;border-radius:16px;' +
-        'padding:6px 14px;font:12px/1.4 Google Sans,sans-serif;' +
-        'cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3);' +
-        'transition:opacity .2s,background .15s;';
+        'display:none;position:fixed;bottom:70px;right:24px;z-index:99999;' +
+        'background:#ea4335;color:#fff;border:none;border-radius:20px;' +
+        'padding:8px 18px;font:13px/1.4 Google Sans,system-ui,sans-serif;' +
+        'font-weight:500;cursor:pointer;box-shadow:0 3px 10px rgba(234,67,53,.4);' +
+        'transition:opacity .2s,background .15s,transform .15s;';
       btn.addEventListener('mouseenter', () => { btn.style.background = '#1565c0'; });
       btn.addEventListener('mouseleave', () => { btn.style.background = '#1a73e8'; });
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
         const textarea = findAnyPromptTextarea();
-        if (textarea && textarea.value.trim()) {
-          handleSubmit(textarea);
+        if (!textarea || !textarea.value.trim()) {
+          textarea?.focus();
+          return;
         }
+        handleSubmit(textarea);
       });
       document.body.appendChild(btn);
     }
@@ -86,12 +88,9 @@
   }
 
   // Show/hide Queue button based on generation state
-  let queueButtonPoll = setInterval(() => {
+  setInterval(() => {
     const btn = getOrCreateQueueButton();
-    const generating = isGeminiGenerating();
-    const textarea = findAnyPromptTextarea();
-    const hasText = textarea && textarea.value.trim();
-    btn.style.display = (generating && hasText) ? 'block' : 'none';
+    btn.style.display = isGeminiGenerating() ? 'block' : 'none';
   }, 500);
 
   // --- Gemini State Detection ---
@@ -202,7 +201,7 @@
   // ANY element, not just textarea, to prevent the Stop button from activating.
   // Ctrl+J = queue message (separate listener, no Enter conflict)
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'j' || !e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== 'j' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
     if (!isGeminiGenerating()) return;
 
     e.preventDefault();
