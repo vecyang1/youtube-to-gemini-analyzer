@@ -172,23 +172,18 @@
     const isSubmitKey = enterBehavior === 'submit' ? isEnter : isCmdEnter;
     const isNewlineKey = enterBehavior === 'submit' ? isCmdEnter : isEnter;
 
-    // During generation: block ALL Enter variants to prevent Gemini stopping
+    // During generation: block ALL Enter variants to prevent Gemini stopping.
+    // Any Enter with text in textarea → queue. No newline insertion needed
+    // while Gemini is thinking — user intent is always "submit next".
     if (isGeminiGenerating()) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
 
-      if (isSubmitKey) {
-        // Queue the message if textarea has content
-        const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
-        if (textarea) {
-          handleSubmit(textarea);
-        }
-      } else if (e.target.tagName === 'TEXTAREA') {
-        // Allow newline insertion inside textarea only
-        insertNewline(e.target);
+      const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
+      if (textarea && textarea.value.trim()) {
+        handleSubmit(textarea);
       }
-      // All other Enter variants: swallowed silently
       return;
     }
 
