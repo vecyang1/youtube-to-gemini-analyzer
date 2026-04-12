@@ -63,8 +63,8 @@
     if (!btn) {
       btn = document.createElement('button');
       btn.id = 'vidmind-queue-btn';
-      btn.textContent = 'Queue \u2318\u21E7\u21B5';
-      btn.title = 'Queue this message for after generation completes (Cmd+Shift+Enter)';
+      btn.textContent = 'Queue (Ctrl+J)';
+      btn.title = 'Queue this message for after generation completes (Ctrl+J)';
       btn.style.cssText =
         'display:none;position:fixed;bottom:18px;right:200px;z-index:99999;' +
         'background:#1a73e8;color:#fff;border:none;border-radius:16px;' +
@@ -200,6 +200,22 @@
   // CRITICAL: During generation, we must block Enter/Cmd+Enter from reaching
   // Gemini's native handler (which would stop generation). We intercept on
   // ANY element, not just textarea, to prevent the Stop button from activating.
+  // Ctrl+J = queue message (separate listener, no Enter conflict)
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'j' || !e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (!isGeminiGenerating()) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
+    if (textarea && textarea.value.trim()) {
+      handleSubmit(textarea);
+    }
+  }, true);
+
+  // Enter key handler (normal submit/newline behavior when NOT generating)
   document.addEventListener('keydown', (e) => {
     if (!preferenceLoaded) return;
     if (e.key !== 'Enter') return;
@@ -208,18 +224,6 @@
     const isCmdEnter = e.metaKey || e.ctrlKey;
     const isSubmitKey = enterBehavior === 'submit' ? isEnter : isCmdEnter;
     const isNewlineKey = enterBehavior === 'submit' ? isCmdEnter : isEnter;
-
-    // Cmd+Shift+Enter = queue message (works anytime, essential during generation)
-    if (e.shiftKey && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      const textarea = findPromptTextarea(e.target) || findAnyPromptTextarea();
-      if (textarea && textarea.value.trim()) {
-        handleSubmit(textarea);
-      }
-      return;
-    }
 
     // Not generating: normal behavior
     const target = findPromptTextarea(e.target);
