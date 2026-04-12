@@ -53,10 +53,10 @@
 
   console.log('[VidMind] URL inserted, waiting for video chip...');
 
-  // --- Step 3: Wait for video chip (MutationObserver — reacts instantly) ---
+  // --- Step 3: Wait for video chip to appear AND finish loading ---
+  // Phase A: Wait for chip element to appear in DOM
   const chipDetected = await waitForCondition(
     () => {
-      // Check for video chip/attachment element
       const chip = document.querySelector(
         'mat-chip, .mat-mdc-chip, ' +
         '[role="button"][aria-label*="video"], [aria-label*="YouTube"], ' +
@@ -64,22 +64,42 @@
         '.file-chip, .attachment-chip, .media-chip'
       );
       if (chip) return chip;
-
-      // Or textarea value changed (URL replaced by chip)
       if (textarea.value !== videoUrl && textarea.value !== '') return true;
-
       return null;
     },
     12000,
-    'video chip'
+    'video chip appear'
   );
 
   if (!chipDetected) {
     console.warn('[VidMind] Video chip timeout, continuing anyway');
   }
 
-  // Brief stability delay — let Angular finish rendering after chip insert
-  await sleep(200);
+  // Phase B: Wait for chip to finish loading (no spinners/progress on it)
+  // Gemini shows the chip immediately but backend ingestion takes longer.
+  // Submitting before ingestion completes → "permission denied".
+  const chipReady = await waitForCondition(
+    () => {
+      // Check for ANY loading indicator near the chip / input area
+      const loadingIndicators = document.querySelectorAll(
+        'mat-progress-spinner, mat-progress-bar, .loading, .spinner, ' +
+        '[role="progressbar"], .mat-mdc-progress-spinner, ' +
+        'mat-chip .spin, mat-chip [class*="loading"], ' +
+        '.uploading, [class*="upload"], [class*="processing"]'
+      );
+      // Ready when no loading indicators are visible
+      const hasLoading = Array.from(loadingIndicators).some(
+        el => el.offsetParent !== null
+      );
+      return hasLoading ? null : true;
+    },
+    10000,
+    'video chip ready'
+  );
+
+  // Minimum processing buffer — even if no spinner detected, Gemini's
+  // backend needs time to finish ingesting the video before we can submit
+  await sleep(chipReady ? 800 : 1500);
 
   // --- Step 4: Insert analysis prompt ---
   textarea.focus();
