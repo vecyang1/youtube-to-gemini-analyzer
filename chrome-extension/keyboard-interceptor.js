@@ -19,12 +19,32 @@
   });
 
   // Enter key handler (submit/newline toggle)
+  // Shift+Enter = add to queue (always, regardless of enterBehavior)
   document.addEventListener('keydown', (e) => {
     if (!preferenceLoaded) return;
     if (e.key !== 'Enter') return;
 
     const target = findPromptTextarea(e.target);
     if (!target) return;
+
+    // Shift+Enter → add current textarea content to queue
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const msg = target.value.trim();
+      if (msg) {
+        addToQueue(msg);
+        // Clear textarea
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        );
+        if (setter && setter.set) {
+          setter.set.call(target, '');
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      return;
+    }
 
     const isEnter = !e.metaKey && !e.ctrlKey && !e.shiftKey;
     const isCmdEnter = e.metaKey || e.ctrlKey;
@@ -41,6 +61,18 @@
       insertNewline(target);
     }
   }, true);
+
+  // Shared queue function — used by inline button, floating panel, and keyboard shortcut
+  function addToQueue(msg) {
+    chrome.storage.local.get(['messageQueue'], (data) => {
+      const q = data.messageQueue || [];
+      q.push(msg);
+      chrome.storage.local.set({ messageQueue: q }, () => {
+        // Dispatch custom event so queue UI can react
+        document.dispatchEvent(new CustomEvent('vidmind-queue-updated'));
+      });
+    });
+  }
 
   function clickRunButton() {
     const runButton = findRunButton();
@@ -306,15 +338,10 @@
       if (queueMode === 'steer') {
         steerSend(msg);
       } else {
-        chrome.storage.local.get(['messageQueue'], (data) => {
-          const q = data.messageQueue || [];
-          q.push(msg);
-          chrome.storage.local.set({ messageQueue: q }, () => {
-            refreshQueueList();
-            updateBadge();
-            ensureQueueSender();
-          });
-        });
+        addToQueue(msg);
+        refreshQueueList();
+        updateBadge();
+        ensureQueueSender();
       }
     });
 
@@ -488,11 +515,6 @@
       return false;
     }
 
-    function findAnyTextarea() {
-      const all = Array.from(document.querySelectorAll('textarea'));
-      return all.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0) || null;
-    }
-
     // --- Queue list ---
     function refreshQueueList() {
       chrome.storage.local.get(['messageQueue'], (data) => {
@@ -546,12 +568,121 @@
       }
     });
 
+    // Listen for queue updates from keyboard shortcut or inline button
+    document.addEventListener('vidmind-queue-updated', () => {
+      updateBadge();
+      if (panelOpen) refreshQueueList();
+      ensureQueueSender();
+    });
+
     // Resume auto-sender if queued messages exist
     chrome.storage.local.get(['messageQueue'], (data) => {
       if ((data.messageQueue || []).length > 0) ensureQueueSender();
     });
 
+    // --- Inline Queue Button (next to Run) ---
+    injectInlineQueueButton();
+
     console.log('[VidMind] Queue UI initialized (Queue/Steer modes)');
+  }
+
+  // Inject a "Q+" button into AI Studio's button-wrapper (next to Run)
+  function injectInlineQueueButton() {
+    const INLINE_ID = 'vidmind-inline-queue-btn';
+
+    function createBtn() {
+      if (document.getElementById(INLINE_ID)) return; // already injected
+
+      const wrapper = document.querySelector('div.button-wrapper, .button-wrapper');
+      if (!wrapper) return;
+
+      const runBtnHost = wrapper.querySelector('ms-run-button');
+      if (!runBtnHost) return;
+
+      const btn = document.createElement('button');
+      btn.id = INLINE_ID;
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Add to Queue (Shift+Enter)');
+      btn.title = 'Add to Queue (Shift+Enter)';
+      btn.className = 'ms-button-filter-chip';
+      btn.style.cssText = [
+        'display:inline-flex;align-items:center;gap:4px;',
+        'padding:4px 12px;margin-right:4px;',
+        'border:1px solid #dadce0;border-radius:18px;',
+        'background:#fff;color:#1a73e8;font-size:12px;font-weight:500;',
+        'cursor:pointer;font-family:Google Sans,system-ui,sans-serif;',
+        'height:36px;white-space:nowrap;transition:background .15s,border-color .15s;'
+      ].join('');
+      btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">queue</span> Q+';
+
+      // Hover effect
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = '#e8f0fe';
+        btn.style.borderColor = '#1a73e8';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = '#fff';
+        btn.style.borderColor = '#dadce0';
+      });
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Get text from the main prompt textarea
+        const textarea = findAnyTextarea();
+        if (!textarea) return;
+        const msg = textarea.value.trim();
+        if (!msg) return;
+
+        // Add to queue
+        addToQueue(msg);
+
+        // Clear textarea
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        );
+        if (setter && setter.set) {
+          setter.set.call(textarea, '');
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Brief visual feedback
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check</span> Queued';
+        btn.style.background = '#e6f4ea';
+        btn.style.borderColor = '#34a853';
+        btn.style.color = '#34a853';
+        setTimeout(() => {
+          btn.innerHTML = origText;
+          btn.style.background = '#fff';
+          btn.style.borderColor = '#dadce0';
+          btn.style.color = '#1a73e8';
+        }, 1200);
+      });
+
+      // Insert before Run button
+      wrapper.insertBefore(btn, runBtnHost);
+    }
+
+    // AI Studio is SPA — button-wrapper may not exist yet. Observe + retry.
+    createBtn();
+    const observer = new MutationObserver(() => { createBtn(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Also re-check on navigation (SPA route changes)
+    let lastUrl = location.href;
+    setInterval(() => {
+      if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        setTimeout(createBtn, 500);
+      }
+    }, 1000);
+  }
+
+  function findAnyTextarea() {
+    const all = Array.from(document.querySelectorAll('textarea'));
+    return all.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0) || null;
   }
 
   // Only show if enabled in settings
