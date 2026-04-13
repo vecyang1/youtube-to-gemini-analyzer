@@ -202,109 +202,180 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-function findRunButton() {
-  const exactSelectors = [
-    'button[jslog*="250044"]',
-    'button[jslog*="225921"]',
-    'ms-run-button button',
-    'button.ctrl-enter-submits'
-  ];
+// ====== ADAPTIVE DOM DETECTION (shared design with keyboard-interceptor.js) ======
+// Multi-strategy cascading: known selectors → semantic heuristics → structural fallback
 
-  for (const selector of exactSelectors) {
-    try {
-      const button = document.querySelector(selector);
-      if (button && isButtonActive(button)) return button;
-    } catch (e) {}
-  }
-
-  return findHeuristicRunButton();
+function isButtonVisible(btn) {
+  return btn.offsetParent !== null &&
+         !btn.disabled &&
+         btn.getAttribute('aria-disabled') !== 'true';
 }
 
-function isButtonActive(button) {
-  return !button.disabled &&
-         button.getAttribute('aria-disabled') !== 'true' &&
-         button.offsetParent !== null;
+// Alias for backward compat
+function isButtonActive(btn) { return isButtonVisible(btn); }
+
+function btnText(btn) {
+  let text = '';
+  for (const node of btn.childNodes) {
+    if (node.nodeType === 3) {
+      text += node.textContent;
+    } else if (node.nodeType === 1) {
+      const cls = (node.className || '').toString().toLowerCase();
+      if (cls.includes('material-symbols') || cls.includes('mat-icon') ||
+          cls.includes('icon') || cls.includes('command-key') ||
+          node.tagName === 'SVG' || node.tagName === 'CANVAS') continue;
+      text += node.textContent;
+    }
+  }
+  return text.trim().toLowerCase();
+}
+
+function hasIcon(el, iconNames) {
+  const iconEls = el.querySelectorAll(
+    '.material-symbols-outlined, mat-icon, [class*="icon"], svg'
+  );
+  for (const icon of iconEls) {
+    const t = (icon.textContent || '').trim().toLowerCase();
+    if (iconNames.some(name => t === name)) return true;
+  }
+  return false;
+}
+
+function gatherAttrs(el) {
+  return [
+    el.getAttribute('placeholder'),
+    el.getAttribute('aria-label'),
+    el.getAttribute('title'),
+    el.getAttribute('formcontrolname'),
+    el.getAttribute('name'),
+    el.getAttribute('data-test-id')
+  ].filter(Boolean).map(s => s.toLowerCase()).join(' ');
 }
 
 function findHeuristicTextarea() {
-  const allTextareas = Array.from(document.querySelectorAll('textarea'));
-  const visible = allTextareas.filter(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0);
-
+  const all = Array.from(document.querySelectorAll('textarea'));
+  const visible = all.filter(t =>
+    t.offsetParent !== null && t.getBoundingClientRect().height > 0
+  );
+  if (visible.length === 0) return null;
   if (visible.length === 1) return visible[0];
 
-  let bestScore = -1;
-  let best = null;
+  let best = null, bestScore = -1;
+  const keywords = ['prompt', 'type', 'ask', 'chat', 'input', 'message'];
 
   for (const t of visible) {
     let score = 0;
-    const placeholder = (t.getAttribute('placeholder') || '').toLowerCase();
-    if (placeholder.includes('prompt') || placeholder.includes('type') || placeholder.includes('ask')) score += 5;
-
-    const ariaLabel = (t.getAttribute('aria-label') || '').toLowerCase();
-    if (ariaLabel.includes('prompt') || ariaLabel.includes('chat') || ariaLabel.includes('input')) score += 5;
-
-    const formControl = (t.getAttribute('formcontrolname') || '').toLowerCase();
-    if (formControl.includes('prompt')) score += 3;
-
+    const attrs = gatherAttrs(t);
+    if (keywords.some(k => attrs.includes(k))) score += 5;
     if (t.hasAttribute('cdktextareaautosize')) score += 2;
+    if (t.getAttribute('formcontrolname')) score += 2;
+    const rect = t.getBoundingClientRect();
+    if (rect.top > window.innerHeight * 0.5) score += 1;
+    if (rect.height > 30) score += 1;
 
-    if (score > bestScore) {
-      bestScore = score;
-      best = t;
-    }
+    if (score > bestScore) { bestScore = score; best = t; }
   }
-
-  return bestScore >= 0 ? best : (visible[visible.length - 1] || null);
+  return best || visible[visible.length - 1];
 }
 
-function findHeuristicRunButton() {
-  const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-  const active = allButtons.filter(isButtonActive);
+function findRunButton() {
+  // Tier 1: known exact selectors
+  const tier1 = [
+    'ms-run-button button',
+    'button.ctrl-enter-submits',
+    'button[jslog*="225921"]',
+    'button[jslog*="250044"]',
+    'button[type="submit"]'
+  ];
+  for (const sel of tier1) {
+    try {
+      const btn = document.querySelector(sel);
+      if (btn && isButtonVisible(btn)) return btn;
+    } catch (_) {}
+  }
 
-  for (const b of active) {
-    const text = (b.textContent || '').trim().toLowerCase();
-    const ariaLabel = (b.getAttribute('aria-label') || '').toLowerCase();
-    const title = (b.getAttribute('title') || '').toLowerCase();
+  // Tier 2: semantic — text / aria / icon
+  const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+  const visible = allBtns.filter(isButtonVisible);
+  const runKeywords = ['run', 'submit', 'send'];
+  const runIcons = ['send', 'play_arrow', 'arrow_upward'];
 
-    if (text === 'run' || text === 'submit' || text === 'send') return b;
-    if (ariaLabel === 'run' || ariaLabel === 'submit' || ariaLabel === 'send message') return b;
-    if (title === 'run' || title === 'submit' || title === 'send') return b;
+  for (const btn of visible) {
+    const txt = btnText(btn);
+    if (runKeywords.some(k => txt === k)) return btn;
+  }
+  for (const btn of visible) {
+    if (hasIcon(btn, runIcons)) return btn;
+  }
 
-    const hasMaterialIcon = Array.from(b.querySelectorAll('.material-symbols-outlined, mat-icon'))
-      .some(icon => {
-        const iconText = (icon.textContent || '').trim().toLowerCase();
-        return iconText === 'send' || iconText === 'play_arrow' || iconText === 'arrow_upward';
-      });
-    if (hasMaterialIcon) return b;
+  // Tier 3: structural — primary button nearest the textarea
+  const textarea = findHeuristicTextarea();
+  if (textarea) {
+    let container = textarea.parentElement;
+    for (let i = 0; i < 6 && container; i++) {
+      const btns = visible.filter(b => container.contains(b));
+      if (btns.length > 0) {
+        for (const b of btns) {
+          const txt = btnText(b);
+          if (runKeywords.some(k => txt.includes(k))) return b;
+        }
+        return btns[btns.length - 1];
+      }
+      container = container.parentElement;
+    }
   }
 
   return null;
 }
 
+function isGeminiGenerating() {
+  // Signal 1: Stop button
+  const allBtns = document.querySelectorAll('button, [role="button"]');
+  for (const b of allBtns) {
+    if (!isButtonVisible(b)) continue;
+    const txt = btnText(b);
+    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+    if (txt === 'stop' || aria === 'stop' || aria === 'stop generating' ||
+        aria === 'cancel generation' || txt === 'cancel') return true;
+    if (hasIcon(b, ['stop', 'stop_circle', 'cancel', 'pause'])) return true;
+  }
+
+  // Signal 2: Progress indicators
+  const spinnerSels = [
+    'mat-progress-spinner', 'mat-progress-bar',
+    '.mat-mdc-progress-spinner', '.mat-mdc-progress-bar',
+    '[role="progressbar"]', '.spinner', '.spin'
+  ];
+  for (const sel of spinnerSels) {
+    try {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        if (el.offsetParent !== null) return true;
+      }
+    } catch (_) {}
+  }
+
+  // Signal 3: Run button container in stop state
+  const runContainers = document.querySelectorAll(
+    'ms-run-button, [class*="run-button"], [class*="submit-button"]'
+  );
+  for (const c of runContainers) {
+    if (hasIcon(c, ['stop', 'stop_circle'])) return true;
+  }
+
+  // Signal 4: Generating/streaming CSS classes
+  const animated = document.querySelectorAll(
+    '[class*="generating"], [class*="streaming"], [class*="typing"]'
+  );
+  if (animated.length > 0) return true;
+
+  return false;
+}
+
 function startHeartbeat() {
   let heartbeatInterval = setInterval(() => {
-    const animatedElements = document.querySelectorAll('.spin, [style*="animation"], svg animateTransform, mat-progress-spinner');
-    const isSpinning = animatedElements.length > 0;
-
-    let isStopping = false;
-    const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
-    for (const button of allButtons) {
-      const text = (button.textContent || '').trim().toLowerCase();
-      const title = (button.getAttribute('title') || '').toLowerCase();
-      const ariaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
-
-      if (text === 'stop' || title === 'stop' || ariaLabel === 'stop' || ariaLabel === 'stop generating') {
-        if (isButtonActive(button)) {
-          isStopping = true;
-          break;
-        }
-      }
-    }
-
-    if (!isStopping && !isSpinning) {
-      clearInterval(heartbeatInterval);
-      chrome.runtime.sendMessage({ action: 'analysisComplete' });
-    } else {
+    if (isGeminiGenerating()) {
+      // Keep the tab alive during generation
       document.dispatchEvent(new MouseEvent('mousemove', {
         bubbles: true, cancelable: true, view: window,
         clientX: Math.random() * window.innerWidth,
@@ -312,6 +383,9 @@ function startHeartbeat() {
       }));
       window.dispatchEvent(new Event('scroll'));
       requestAnimationFrame(() => {});
+    } else {
+      clearInterval(heartbeatInterval);
+      chrome.runtime.sendMessage({ action: 'analysisComplete' });
     }
   }, 2000);
 }
