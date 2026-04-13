@@ -604,38 +604,33 @@
       btn.type = 'button';
       btn.setAttribute('aria-label', 'Add to Queue (Shift+Enter)');
       btn.title = 'Add to Queue (Shift+Enter)';
-      btn.className = 'ms-button-filter-chip';
       btn.style.cssText = [
-        'display:inline-flex;align-items:center;gap:4px;',
-        'padding:4px 12px;margin-right:4px;',
-        'border:1px solid #dadce0;border-radius:18px;',
-        'background:#fff;color:#1a73e8;font-size:12px;font-weight:500;',
-        'cursor:pointer;font-family:Google Sans,system-ui,sans-serif;',
-        'height:36px;white-space:nowrap;transition:background .15s,border-color .15s;'
+        'display:inline-flex;align-items:center;justify-content:center;',
+        'width:36px;height:36px;margin-right:4px;',
+        'border:1px solid transparent;border-radius:50%;',
+        'background:transparent;color:#444746;',
+        'cursor:pointer;transition:background .15s;',
+        'position:relative;'
       ].join('');
-      btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">queue</span> Q+';
+      // Inline SVG — playlist_add icon (clean, no font dependency)
+      btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>';
 
-      // Hover effect
       btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#e8f0fe';
-        btn.style.borderColor = '#1a73e8';
+        btn.style.background = 'rgba(68,71,70,.08)';
       });
       btn.addEventListener('mouseleave', () => {
-        btn.style.background = '#fff';
-        btn.style.borderColor = '#dadce0';
+        btn.style.background = 'transparent';
       });
 
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
 
-        // Get text from the main prompt textarea
         const textarea = findAnyTextarea();
         if (!textarea) return;
         const msg = textarea.value.trim();
         if (!msg) return;
 
-        // Add to queue
         addToQueue(msg);
 
         // Clear textarea
@@ -647,18 +642,13 @@
           textarea.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // Brief visual feedback
-        const origText = btn.innerHTML;
-        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">check</span> Queued';
-        btn.style.background = '#e6f4ea';
-        btn.style.borderColor = '#34a853';
+        // Brief visual feedback — green check
         btn.style.color = '#34a853';
+        btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
         setTimeout(() => {
-          btn.innerHTML = origText;
-          btn.style.background = '#fff';
-          btn.style.borderColor = '#dadce0';
-          btn.style.color = '#1a73e8';
-        }, 1200);
+          btn.style.color = '#444746';
+          btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>';
+        }, 1000);
       });
 
       // Insert before Run button
