@@ -312,8 +312,6 @@ queueAddBtn.addEventListener('click', () => {
     chrome.storage.local.set({ messageQueue: queue }, () => {
       queueInput.value = '';
       loadQueue();
-      // Ensure monitor is running
-      chrome.runtime.sendMessage({ action: 'startQueueMonitor' });
     });
   });
 });
