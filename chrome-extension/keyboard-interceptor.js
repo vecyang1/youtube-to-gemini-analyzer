@@ -374,9 +374,17 @@
           if (isSending) return;
 
           // Phase A: is generation still running?
-          if (isGeminiGenerating()) return;
+          if (isGeminiGenerating()) {
+            statusEl.textContent = 'waiting...';
+            // Reset stability when generating so Phase B starts fresh after gen ends
+            stabilitySnapshot = null;
+            stabilityCount = 0;
+            return;
+          }
 
           // Phase B: is response text stable? (no new text for 1s)
+          const currentLen = getResponseTextLength();
+          statusEl.textContent = 'checking... (' + currentLen + ')';
           checkTextStability(() => {
             if (isSending) return;
             isSending = true;
@@ -440,23 +448,42 @@
     }
 
     function getResponseTextLength() {
-      // Find the last response message container
+      // Find the last model response turn — note capital "Model" in AI Studio DOM
       const responses = document.querySelectorAll(
-        '.model-response, [data-turn-role="model"], .response-container, ' +
-        '.markdown-main-panel, [class*="response"], [class*="message-content"]'
+        '[data-turn-role="Model"], .chat-turn-container.model'
       );
       if (responses.length === 0) return 0;
       const last = responses[responses.length - 1];
-      return (last.textContent || '').length;
+      // Prefer .turn-content to avoid virtual-scroll spacer noise
+      const content = last.querySelector('.turn-content');
+      return ((content || last).textContent || '').length;
     }
 
     function isGeminiGenerating() {
+      // Check 1: Stop button visible
       const buttons = document.querySelectorAll('button, [role="button"]');
       for (const b of buttons) {
         const text = (b.textContent || '').trim().toLowerCase();
         const aria = (b.getAttribute('aria-label') || '').toLowerCase();
         if ((text === 'stop' || aria === 'stop' || aria === 'stop generating') &&
             !b.disabled && b.offsetParent !== null) return true;
+      }
+      // Check 2: Animated spinners / progress indicators (same as content-gemini.js)
+      const spinners = document.querySelectorAll(
+        '.spin, mat-progress-spinner, mat-progress-bar, [role="progressbar"], ' +
+        '.mat-mdc-progress-spinner'
+      );
+      for (const el of spinners) {
+        if (el.offsetParent !== null) return true;
+      }
+      // Check 3: Run button shows stop icon (ms-run-button may swap icon during gen)
+      const runBtnContainer = document.querySelector('ms-run-button');
+      if (runBtnContainer) {
+        const icons = runBtnContainer.querySelectorAll('.material-symbols-outlined, mat-icon');
+        for (const icon of icons) {
+          const t = (icon.textContent || '').trim().toLowerCase();
+          if (t === 'stop' || t === 'stop_circle') return true;
+        }
       }
       return false;
     }
