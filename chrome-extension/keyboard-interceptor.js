@@ -129,14 +129,19 @@
            button.offsetParent !== null;
   }
 
-  // ====== Floating Queue Panel (draggable) ======
-  function initQueueUI() {
-    const container = document.createElement('div');
-    container.id = 'vidmind-q-wrap';
-    container.style.cssText =
-      'position:fixed;bottom:120px;right:16px;z-index:999999;user-select:none;';
+  // ====== Floating Queue Panel ======
+  // Two modes: Queue (waits for generation complete) / Steer (sends immediately)
+  // Draggable toggle button with persisted position
 
-    container.innerHTML = `
+  let queueMode = 'queue'; // 'queue' | 'steer'
+
+  function initQueueUI() {
+    // --- Build DOM ---
+    const wrap = document.createElement('div');
+    wrap.id = 'vidmind-q-wrap';
+    wrap.style.cssText = 'position:fixed;z-index:999999;user-select:none;';
+
+    wrap.innerHTML = `
       <div id="vidmind-q-toggle" style="
         width:40px;height:40px;border-radius:50%;
         background:#1a73e8;color:#fff;font-size:20px;
@@ -151,14 +156,27 @@
       </div>
       <div id="vidmind-q-panel" style="
         display:none;width:280px;background:#fff;border-radius:12px;
-        box-shadow:0 4px 20px rgba(0,0,0,.2);margin-bottom:8px;
+        box-shadow:0 4px 20px rgba(0,0,0,.2);
         font-family:Google Sans,system-ui,sans-serif;overflow:hidden;
         position:absolute;bottom:48px;right:0;">
-        <div id="vidmind-q-dragbar" style="
-          padding:10px 14px;background:#1a73e8;color:#fff;font-size:13px;
-          font-weight:500;cursor:grab;display:flex;align-items:center;gap:6px;">
-          <span>\u23F3 Queue</span>
-          <span id="vidmind-q-status" style="font-size:10px;opacity:.8;flex:1;text-align:right;"></span>
+        <div id="vidmind-q-header" style="
+          padding:8px 14px;background:#1a73e8;color:#fff;font-size:12px;
+          font-weight:500;display:flex;align-items:center;gap:6px;">
+          <span id="vidmind-q-modelabel" style="flex:1;">\u23F3 Queue Mode</span>
+          <span id="vidmind-q-status" style="font-size:10px;opacity:.8;"></span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;">
+            <span id="vidmind-q-toggle-label">Queue</span>
+            <div style="position:relative;width:32px;height:16px;">
+              <input type="checkbox" id="vidmind-q-mode" style="opacity:0;width:0;height:0;">
+              <div id="vidmind-q-slider" style="
+                position:absolute;top:0;left:0;right:0;bottom:0;
+                background:rgba(255,255,255,.3);border-radius:8px;cursor:pointer;
+                transition:background .2s;"></div>
+              <div id="vidmind-q-thumb" style="
+                position:absolute;top:2px;left:2px;width:12px;height:12px;
+                background:#fff;border-radius:50%;transition:left .2s;"></div>
+            </div>
+          </label>
         </div>
         <div style="padding:10px;">
           <textarea id="vidmind-q-input" placeholder="Type follow-up question..."
@@ -174,22 +192,73 @@
       </div>
     `;
 
-    document.body.appendChild(container);
+    document.body.appendChild(wrap);
 
-    const toggle = document.getElementById('vidmind-q-toggle');
+    const toggleBtn = document.getElementById('vidmind-q-toggle');
     const panel = document.getElementById('vidmind-q-panel');
     const badge = document.getElementById('vidmind-q-badge');
     const statusEl = document.getElementById('vidmind-q-status');
+    const header = document.getElementById('vidmind-q-header');
+    const modeCheckbox = document.getElementById('vidmind-q-mode');
+    const modeLabel = document.getElementById('vidmind-q-modelabel');
+    const toggleLabel = document.getElementById('vidmind-q-toggle-label');
+    const slider = document.getElementById('vidmind-q-slider');
+    const thumb = document.getElementById('vidmind-q-thumb');
 
-    // --- Drag ---
+    // --- Load persisted position ---
+    chrome.storage.local.get(['queueTogglePosition'], (data) => {
+      const pos = data.queueTogglePosition;
+      if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+        // Clamp to viewport
+        const x = Math.max(0, Math.min(pos.x, window.innerWidth - 44));
+        const y = Math.max(0, Math.min(pos.y, window.innerHeight - 44));
+        wrap.style.left = x + 'px';
+        wrap.style.top = y + 'px';
+      } else {
+        wrap.style.bottom = '120px';
+        wrap.style.right = '16px';
+      }
+    });
+
+    // --- Load persisted mode ---
+    chrome.storage.sync.get(['queueMode'], (data) => {
+      queueMode = data.queueMode || 'queue';
+      applyModeUI();
+    });
+
+    function applyModeUI() {
+      const isSteer = queueMode === 'steer';
+      modeCheckbox.checked = isSteer;
+      header.style.background = isSteer ? '#e8710a' : '#1a73e8';
+      modeLabel.textContent = isSteer ? '\u26A1 Steer Mode' : '\u23F3 Queue Mode';
+      toggleLabel.textContent = isSteer ? 'Steer' : 'Queue';
+      thumb.style.left = isSteer ? '18px' : '2px';
+      slider.style.background = isSteer ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.3)';
+      document.getElementById('vidmind-q-add').textContent =
+        isSteer ? 'Send Now' : 'Add to Queue';
+      document.getElementById('vidmind-q-add').style.background =
+        isSteer ? '#e8710a' : '#1a73e8';
+    }
+
+    // --- Mode toggle ---
+    modeCheckbox.addEventListener('change', () => {
+      queueMode = modeCheckbox.checked ? 'steer' : 'queue';
+      chrome.storage.sync.set({ queueMode });
+      applyModeUI();
+    });
+    // Click the slider/thumb area
+    slider.addEventListener('click', () => { modeCheckbox.checked = !modeCheckbox.checked; modeCheckbox.dispatchEvent(new Event('change')); });
+    thumb.addEventListener('click', () => { modeCheckbox.checked = !modeCheckbox.checked; modeCheckbox.dispatchEvent(new Event('change')); });
+
+    // --- Drag toggle button ---
     let dragging = false, dragMoved = false, startX, startY, origX, origY;
 
-    toggle.addEventListener('mousedown', (e) => {
+    toggleBtn.addEventListener('mousedown', (e) => {
       dragging = true; dragMoved = false;
       startX = e.clientX; startY = e.clientY;
-      const rect = container.getBoundingClientRect();
+      const rect = wrap.getBoundingClientRect();
       origX = rect.left; origY = rect.top;
-      toggle.style.cursor = 'grabbing';
+      toggleBtn.style.cursor = 'grabbing';
       e.preventDefault();
     });
 
@@ -197,41 +266,56 @@
       if (!dragging) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
-      container.style.left = (origX + dx) + 'px';
-      container.style.top = (origY + dy) + 'px';
-      container.style.right = 'auto';
-      container.style.bottom = 'auto';
+      const newX = Math.max(0, Math.min(origX + dx, window.innerWidth - 44));
+      const newY = Math.max(0, Math.min(origY + dy, window.innerHeight - 44));
+      wrap.style.left = newX + 'px';
+      wrap.style.top = newY + 'px';
+      wrap.style.right = 'auto';
+      wrap.style.bottom = 'auto';
     });
 
     document.addEventListener('mouseup', () => {
-      if (dragging) { dragging = false; toggle.style.cursor = 'grab'; }
+      if (!dragging) return;
+      dragging = false;
+      toggleBtn.style.cursor = 'grab';
+      if (dragMoved) {
+        // Persist position
+        const rect = wrap.getBoundingClientRect();
+        chrome.storage.local.set({
+          queueTogglePosition: { x: rect.left, y: rect.top }
+        });
+      }
     });
 
     // --- Toggle panel (only if not dragged) ---
     let panelOpen = false;
-    toggle.addEventListener('click', () => {
+    toggleBtn.addEventListener('click', () => {
       if (dragMoved) return;
       panelOpen = !panelOpen;
       panel.style.display = panelOpen ? 'block' : 'none';
       if (panelOpen) refreshQueueList();
     });
 
-    // --- Add to queue ---
+    // --- Add / Send ---
     document.getElementById('vidmind-q-add').addEventListener('click', () => {
       const input = document.getElementById('vidmind-q-input');
       const msg = input.value.trim();
       if (!msg) return;
+      input.value = '';
 
-      chrome.storage.local.get(['messageQueue'], (data) => {
-        const q = data.messageQueue || [];
-        q.push(msg);
-        chrome.storage.local.set({ messageQueue: q }, () => {
-          input.value = '';
-          refreshQueueList();
-          updateBadge();
-          ensureAutoSender();
+      if (queueMode === 'steer') {
+        steerSend(msg);
+      } else {
+        chrome.storage.local.get(['messageQueue'], (data) => {
+          const q = data.messageQueue || [];
+          q.push(msg);
+          chrome.storage.local.set({ messageQueue: q }, () => {
+            refreshQueueList();
+            updateBadge();
+            ensureQueueSender();
+          });
         });
-      });
+      }
     });
 
     document.getElementById('vidmind-q-input').addEventListener('keydown', (e) => {
@@ -240,6 +324,147 @@
         document.getElementById('vidmind-q-add').click();
       }
     }, true);
+
+    // --- Steer Mode: send immediately ---
+    function steerSend(msg) {
+      statusEl.textContent = 'sending...';
+      const textarea = findAnyTextarea();
+      if (!textarea) { statusEl.textContent = 'no textarea'; return; }
+
+      textarea.focus();
+      setTimeout(() => {
+        const inserted = document.execCommand('insertText', false, msg);
+        if (!inserted) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value'
+          ).set;
+          setter.call(textarea, msg);
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        setTimeout(() => {
+          const btn = findRunButton();
+          if (btn) { btn.click(); statusEl.textContent = 'sent!'; }
+          else { statusEl.textContent = 'no Run btn'; }
+          setTimeout(() => { statusEl.textContent = ''; }, 2000);
+        }, 150);
+      }, 100);
+    }
+
+    // --- Queue Mode: polling-based auto-sender ---
+    // Uses setInterval (NOT MutationObserver) to avoid DOM-change false positives.
+    // Two-phase detection: Stop button gone → response text stable for 1s.
+    let queueSenderInterval = null;
+    let isSending = false; // mutex
+
+    function ensureQueueSender() {
+      if (queueSenderInterval) return;
+      statusEl.textContent = 'watching...';
+
+      queueSenderInterval = setInterval(() => {
+        if (isSending) return;
+
+        chrome.storage.local.get(['messageQueue'], (data) => {
+          const q = data.messageQueue || [];
+          if (q.length === 0) {
+            clearInterval(queueSenderInterval);
+            queueSenderInterval = null;
+            statusEl.textContent = '';
+            return;
+          }
+          if (isSending) return;
+
+          // Phase A: is generation still running?
+          if (isGeminiGenerating()) return;
+
+          // Phase B: is response text stable? (no new text for 1s)
+          checkTextStability(() => {
+            if (isSending) return;
+            isSending = true;
+
+            const msg = q.shift();
+            chrome.storage.local.set({ messageQueue: q });
+            statusEl.textContent = 'sending...';
+
+            const textarea = findAnyTextarea();
+            if (!textarea) {
+              q.unshift(msg);
+              chrome.storage.local.set({ messageQueue: q });
+              isSending = false;
+              return;
+            }
+
+            textarea.focus();
+            setTimeout(() => {
+              const inserted = document.execCommand('insertText', false, msg);
+              if (!inserted) {
+                const setter = Object.getOwnPropertyDescriptor(
+                  window.HTMLTextAreaElement.prototype, 'value'
+                ).set;
+                setter.call(textarea, msg);
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              setTimeout(() => {
+                const btn = findRunButton();
+                if (btn) btn.click();
+                refreshQueueList();
+                updateBadge();
+                statusEl.textContent = q.length > 0 ? 'watching...' : '';
+                isSending = false;
+              }, 200);
+            }, 100);
+          });
+        });
+      }, 500);
+    }
+
+    // Phase B: check response text stability — no new characters for 1 second
+    let stabilitySnapshot = null;
+    let stabilityCount = 0;
+
+    function checkTextStability(onStable) {
+      const len = getResponseTextLength();
+      if (stabilitySnapshot === null || len !== stabilitySnapshot) {
+        // Text changed or first check — reset
+        stabilitySnapshot = len;
+        stabilityCount = 0;
+        return; // will re-check on next poll cycle
+      }
+      // Text same as last check
+      stabilityCount++;
+      if (stabilityCount >= 2) {
+        // Stable for 2 consecutive checks (2 * 500ms = 1s)
+        stabilitySnapshot = null;
+        stabilityCount = 0;
+        onStable();
+      }
+    }
+
+    function getResponseTextLength() {
+      // Find the last response message container
+      const responses = document.querySelectorAll(
+        '.model-response, [data-turn-role="model"], .response-container, ' +
+        '.markdown-main-panel, [class*="response"], [class*="message-content"]'
+      );
+      if (responses.length === 0) return 0;
+      const last = responses[responses.length - 1];
+      return (last.textContent || '').length;
+    }
+
+    function isGeminiGenerating() {
+      const buttons = document.querySelectorAll('button, [role="button"]');
+      for (const b of buttons) {
+        const text = (b.textContent || '').trim().toLowerCase();
+        const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+        if ((text === 'stop' || aria === 'stop' || aria === 'stop generating') &&
+            !b.disabled && b.offsetParent !== null) return true;
+      }
+      return false;
+    }
+
+    function findAnyTextarea() {
+      const all = Array.from(document.querySelectorAll('textarea'));
+      return all.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0) || null;
+    }
 
     // --- Queue list ---
     function refreshQueueList() {
@@ -256,7 +481,8 @@
         list.innerHTML = q.map((msg, i) =>
           '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #f1f3f4;font-size:11px;">' +
           '<span style="color:#5f6368;">' + (i + 1) + '.</span>' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + msg.replace(/"/g, '&quot;') + '">' + msg + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' +
+            msg.replace(/"/g, '&quot;') + '">' + msg + '</span>' +
           '<span data-del="' + i + '" style="cursor:pointer;color:#ea4335;font-size:14px;padding:0 2px;">\u2715</span>' +
           '</div>'
         ).join('');
@@ -284,87 +510,7 @@
       });
     }
 
-    // --- Auto-sender: MutationObserver watches for Run button ---
-    // Reacts INSTANTLY when generation finishes (Run button appears)
-    let autoSenderActive = false;
-
-    function ensureAutoSender() {
-      if (autoSenderActive) return;
-      autoSenderActive = true;
-      statusEl.textContent = 'watching...';
-
-      const observer = new MutationObserver(() => {
-        chrome.storage.local.get(['messageQueue'], (data) => {
-          const q = data.messageQueue || [];
-          if (q.length === 0) {
-            autoSenderActive = false;
-            statusEl.textContent = '';
-            observer.disconnect();
-            return;
-          }
-
-          // Check: is generation done? (Run button visible, no Stop button)
-          if (isGeminiGenerating()) return;
-
-          const runBtn = findRunButton();
-          if (!runBtn) return;
-
-          // Send next message
-          const msg = q.shift();
-          chrome.storage.local.set({ messageQueue: q });
-          statusEl.textContent = 'sending...';
-
-          const textarea = findAnyTextarea();
-          if (!textarea) return;
-
-          textarea.focus();
-          setTimeout(() => {
-            const inserted = document.execCommand('insertText', false, msg);
-            if (!inserted) {
-              const setter = Object.getOwnPropertyDescriptor(
-                window.HTMLTextAreaElement.prototype, 'value'
-              ).set;
-              setter.call(textarea, msg);
-              textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-
-            setTimeout(() => {
-              const btn = findRunButton();
-              if (btn) btn.click();
-              statusEl.textContent = q.length > 0 ? 'watching...' : '';
-              refreshQueueList();
-              updateBadge();
-
-              if (q.length === 0) {
-                autoSenderActive = false;
-                observer.disconnect();
-              }
-            }, 150);
-          }, 100);
-        });
-      });
-
-      observer.observe(document.body, {
-        childList: true, subtree: true, attributes: true
-      });
-    }
-
-    function isGeminiGenerating() {
-      const buttons = document.querySelectorAll('button, [role="button"]');
-      for (const b of buttons) {
-        const text = (b.textContent || '').trim().toLowerCase();
-        const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-        if ((text === 'stop' || aria === 'stop' || aria === 'stop generating') &&
-            !b.disabled && b.offsetParent !== null) return true;
-      }
-      return false;
-    }
-
-    function findAnyTextarea() {
-      const all = Array.from(document.querySelectorAll('textarea'));
-      return all.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0) || null;
-    }
-
+    // --- Init ---
     updateBadge();
     chrome.storage.onChanged.addListener((changes) => {
       if (changes.messageQueue) {
@@ -373,21 +519,20 @@
       }
     });
 
-    // If there are already queued messages, start auto-sender
+    // Resume auto-sender if queued messages exist
     chrome.storage.local.get(['messageQueue'], (data) => {
-      if ((data.messageQueue || []).length > 0) ensureAutoSender();
+      if ((data.messageQueue || []).length > 0) ensureQueueSender();
     });
 
-    console.log('[VidMind] Queue UI injected');
+    console.log('[VidMind] Queue UI initialized (Queue/Steer modes)');
   }
 
-  // Only show queue UI if enabled in settings (default: on)
+  // Only show if enabled in settings
   chrome.storage.sync.get(['showQueueFloat'], (result) => {
     if (result.showQueueFloat === false) return;
     if (document.body) { initQueueUI(); } else { document.addEventListener('DOMContentLoaded', initQueueUI); }
   });
 
-  // React to setting changes in real-time
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'sync' || !changes.showQueueFloat) return;
     const wrap = document.getElementById('vidmind-q-wrap');
