@@ -1,7 +1,7 @@
 # PRD: Queue Modes (Queue + Steer)
 
-**Status:** 📋 Draft  
-**Version:** 1.0  
+**Status:** ✅ Complete  
+**Version:** 1.1  
 **Created:** 2026-04-13  
 **Last Updated:** 2026-04-13
 
@@ -41,10 +41,10 @@ Additionally: the toggle button becomes draggable with persistent position, and 
 **So that** my follow-ups don't interrupt or corrupt the current answer.
 
 **Acceptance Criteria:**
-- [ ] Queued messages never inject during active generation
-- [ ] "Fully complete" = Stop button gone AND no new text rendered for 1 second
-- [ ] Status indicator shows "waiting..." while monitoring, "sending..." when dispatching
-- [ ] Multiple queued messages chain sequentially (each waits for its response to finish)
+- [x] Queued messages never inject during active generation
+- [x] "Fully complete" = Stop button gone AND no new text rendered for 1 second
+- [x] Status indicator shows "waiting..." while monitoring, "sending..." when dispatching
+- [x] Multiple queued messages chain sequentially (each waits for its response to finish)
 
 ### US-002: Steer Mode
 **As a** power user,  
@@ -52,10 +52,10 @@ Additionally: the toggle button becomes draggable with persistent position, and 
 **So that** I can redirect the answer without waiting.
 
 **Acceptance Criteria:**
-- [ ] Toggle switch in floating panel header: "Queue" | "Steer"
-- [ ] Steer mode sends immediately upon "Add to Queue" click (no waiting)
-- [ ] Visual distinction: Steer mode header turns orange
-- [ ] Default mode is Queue
+- [x] Toggle switch in floating panel header: "Queue" | "Steer"
+- [x] Steer mode sends immediately upon "Add to Queue" click (no waiting)
+- [x] Visual distinction: Steer mode header turns orange
+- [x] Default mode is Queue
 
 ### US-003: Draggable Toggle Button with Persistent Position
 **As a** user,  
@@ -63,11 +63,11 @@ Additionally: the toggle button becomes draggable with persistent position, and 
 **So that** it doesn't block content I'm reading.
 
 **Acceptance Criteria:**
-- [ ] ⏳ button is draggable via mousedown+mousemove
-- [ ] Position saved to chrome.storage.local on drag end
-- [ ] Position restored on page load
-- [ ] Panel anchors relative to toggle button position
-- [ ] Click (without drag) toggles panel open/close
+- [x] ⏳ button is draggable via mousedown+mousemove
+- [x] Position saved to chrome.storage.local on drag end
+- [x] Position restored on page load
+- [x] Panel anchors relative to toggle button position
+- [x] Click (without drag) toggles panel open/close
 
 ---
 
@@ -181,3 +181,4 @@ function steerSend(message):
 | Date | Version | Changes | By |
 |------|---------|---------|-----|
 | 2026-04-13 | 1.0 | Initial PRD | Claude |
+| 2026-04-13 | 1.1 | All user stories complete — FR-1 through FR-5 implemented, popup.js cleanup | Claude |
