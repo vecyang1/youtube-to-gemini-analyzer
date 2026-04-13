@@ -1,5 +1,6 @@
 // Keyboard interceptor for Gemini AI Studio
 // Supports Enter/Cmd+Enter toggle for submit/newline
+// Robust adaptive DOM detection — survives AI Studio UI changes
 
 (function() {
   console.log('[VidMind] Keyboard interceptor loaded');
@@ -18,6 +19,326 @@
     }
   });
 
+  // ====== ADAPTIVE DOM DETECTION ENGINE ======
+  // Every function uses multi-strategy cascading:
+  //   Tier 1 — exact known selectors (fast, can break on UI update)
+  //   Tier 2 — semantic heuristics (aria, text, role — resilient)
+  //   Tier 3 — structural/positional (last resort, very resilient)
+  // Successful tier is cached; cache auto-invalidates when stale.
+
+  const _cache = {}; // { key: { selector, ts } }
+  const CACHE_TTL = 5000; // re-validate every 5s
+
+  function cachedQueryOne(key, tryFn) {
+    const c = _cache[key];
+    if (c && (Date.now() - c.ts < CACHE_TTL)) {
+      const el = document.querySelector(c.selector);
+      if (el && el.offsetParent !== null) return el;
+    }
+    const result = tryFn();
+    if (result && result._cacheSelector) {
+      _cache[key] = { selector: result._cacheSelector, ts: Date.now() };
+    }
+    return result;
+  }
+
+  // --- Find the main prompt textarea ---
+  function findAnyTextarea() {
+    const all = Array.from(document.querySelectorAll('textarea'));
+    const visible = all.filter(t =>
+      t.offsetParent !== null && t.getBoundingClientRect().height > 0
+    );
+    if (visible.length === 0) return null;
+    if (visible.length === 1) return visible[0];
+
+    // Score each textarea
+    let best = null, bestScore = -1;
+    for (const t of visible) {
+      let score = 0;
+      const attrs = gatherText(t);
+
+      // Placeholder / aria clues
+      if (matchesAny(attrs, ['prompt', 'type something', 'type here', 'ask', 'message', 'chat', 'input'])) score += 5;
+      // Angular-specific attributes (may vanish)
+      if (t.hasAttribute('cdktextareaautosize')) score += 2;
+      if (t.getAttribute('formcontrolname')) score += 2;
+      // Position: bottom of page = likely the prompt input
+      const rect = t.getBoundingClientRect();
+      if (rect.top > window.innerHeight * 0.5) score += 1;
+      // Larger textarea = more likely to be the main input
+      if (rect.height > 30) score += 1;
+
+      if (score > bestScore) { bestScore = score; best = t; }
+    }
+    return best || visible[visible.length - 1];
+  }
+
+  function findPromptTextarea(target) {
+    if (target.tagName !== 'TEXTAREA') return null;
+    if (!target.offsetParent || target.getBoundingClientRect().height === 0) return null;
+    // Reject our own queue textarea
+    if (target.id === 'vidmind-q-input') return null;
+
+    const attrs = gatherText(target);
+    let score = 0;
+    if (matchesAny(attrs, ['prompt', 'type', 'ask', 'chat', 'input', 'message'])) score += 3;
+    if (target.hasAttribute('cdktextareaautosize')) score += 2;
+    if (target.getAttribute('formcontrolname')) score += 2;
+    if (window.location.hostname.includes('aistudio.google.com')) score += 1;
+
+    return score > 0 ? target : null;
+  }
+
+  // --- Find the Run / Submit button ---
+  function findRunButton() {
+    return cachedQueryOne('runBtn', () => {
+      // Tier 1: known exact selectors
+      const tier1 = [
+        'ms-run-button button',
+        'button.ctrl-enter-submits',
+        'button[jslog*="225921"]',
+        'button[jslog*="250044"]',
+        'button[type="submit"]'
+      ];
+      for (const sel of tier1) {
+        try {
+          const btn = document.querySelector(sel);
+          if (btn && isButtonVisible(btn)) {
+            btn._cacheSelector = sel;
+            return btn;
+          }
+        } catch (_) {}
+      }
+
+      // Tier 2: semantic — text / aria / icon content
+      const allBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+      const visible = allBtns.filter(isButtonVisible);
+      const runKeywords = ['run', 'submit', 'send'];
+      const runIcons = ['send', 'play_arrow', 'arrow_upward'];
+
+      for (const btn of visible) {
+        const txt = btnText(btn);
+        if (runKeywords.some(k => txt === k)) return btn;
+      }
+      for (const btn of visible) {
+        if (hasIcon(btn, runIcons)) return btn;
+      }
+
+      // Tier 3: structural — the primary/submit button nearest the textarea
+      const textarea = findAnyTextarea();
+      if (textarea) {
+        const nearbyBtns = findNearbyButtons(textarea, visible);
+        for (const btn of nearbyBtns) {
+          const txt = btnText(btn);
+          if (runKeywords.some(k => txt.includes(k))) return btn;
+        }
+        // Last visible button in the same container = often the submit
+        if (nearbyBtns.length > 0) return nearbyBtns[nearbyBtns.length - 1];
+      }
+
+      return null;
+    });
+  }
+
+  // --- Detect if Gemini is currently generating ---
+  function isGeminiGenerating() {
+    // Signal 1: Any visible button with stop-like semantics
+    const allBtns = document.querySelectorAll('button, [role="button"]');
+    for (const b of allBtns) {
+      if (!isButtonVisible(b)) continue;
+      const txt = btnText(b);
+      const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+      if (txt === 'stop' || aria === 'stop' || aria === 'stop generating' ||
+          aria === 'cancel generation' || txt === 'cancel') {
+        return true;
+      }
+      // Icon-based stop detection
+      if (hasIcon(b, ['stop', 'stop_circle', 'cancel', 'pause'])) return true;
+    }
+
+    // Signal 2: Progress indicators (multiple selector strategies)
+    const spinnerSelectors = [
+      'mat-progress-spinner', 'mat-progress-bar',
+      '.mat-mdc-progress-spinner', '.mat-mdc-progress-bar',
+      '[role="progressbar"]',
+      '.spinner', '.loading-indicator',
+      'svg.spinner', '.spin'
+    ];
+    for (const sel of spinnerSelectors) {
+      try {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+          if (el.offsetParent !== null) return true;
+        }
+      } catch (_) {}
+    }
+
+    // Signal 3: Run button container shows stop state
+    // Try multiple possible component names (in case ms-run-button is renamed)
+    const runContainers = document.querySelectorAll(
+      'ms-run-button, [class*="run-button"], [class*="submit-button"]'
+    );
+    for (const container of runContainers) {
+      if (hasIcon(container, ['stop', 'stop_circle'])) return true;
+      // If run button text changed to "stop"
+      const innerBtn = container.querySelector('button');
+      if (innerBtn) {
+        const txt = btnText(innerBtn);
+        if (txt === 'stop' || txt === 'cancel') return true;
+      }
+    }
+
+    // Signal 4: CSS animations on response area (streaming cursor, etc.)
+    const animated = document.querySelectorAll(
+      '[class*="generating"], [class*="streaming"], [class*="typing"]'
+    );
+    if (animated.length > 0) return true;
+
+    return false;
+  }
+
+  // --- Get the text length of the last model response ---
+  function getResponseTextLength() {
+    const lastResponse = findLastResponseContainer();
+    if (!lastResponse) return 0;
+    // Prefer a content sub-container to avoid virtual-scroll noise
+    const content = lastResponse.querySelector(
+      '.turn-content, .message-content, .response-content, .response-body'
+    ) || lastResponse;
+    return (content.textContent || '').length;
+  }
+
+  function findLastResponseContainer() {
+    // Strategy 1: data-turn-role attribute (case-insensitive search)
+    const allWithRole = document.querySelectorAll('[data-turn-role]');
+    const modelTurns = Array.from(allWithRole).filter(el => {
+      const role = (el.getAttribute('data-turn-role') || '').toLowerCase();
+      return role === 'model' || role === 'assistant' || role === 'ai' || role === 'gemini';
+    });
+    if (modelTurns.length > 0) return modelTurns[modelTurns.length - 1];
+
+    // Strategy 2: class-based (case-insensitive substring)
+    const classPatterns = [
+      '.chat-turn-container.model',
+      '[class*="model-turn"]', '[class*="model-response"]',
+      '[class*="assistant-turn"]', '[class*="assistant-response"]',
+      '[class*="ai-response"]', '[class*="bot-response"]'
+    ];
+    for (const sel of classPatterns) {
+      try {
+        const els = document.querySelectorAll(sel);
+        if (els.length > 0) return els[els.length - 1];
+      } catch (_) {}
+    }
+
+    // Strategy 3: data-* attribute patterns
+    const dataPatterns = [
+      '[data-role="model"]', '[data-role="assistant"]',
+      '[data-message-role="model"]', '[data-message-role="assistant"]',
+      '[data-author="model"]', '[data-author="assistant"]'
+    ];
+    for (const sel of dataPatterns) {
+      try {
+        const els = document.querySelectorAll(sel);
+        if (els.length > 0) return els[els.length - 1];
+      } catch (_) {}
+    }
+
+    // Strategy 4: structural — in a chat-like layout, model responses
+    // are siblings alternating with user turns. Find the last turn
+    // that is NOT the user's.
+    const userTurns = document.querySelectorAll(
+      '[data-turn-role="User"], [data-turn-role="user"], ' +
+      '[data-role="user"], [class*="user-turn"]'
+    );
+    if (userTurns.length > 0) {
+      const lastUser = userTurns[userTurns.length - 1];
+      // The next sibling of the last user turn is likely the model response
+      let sibling = lastUser.nextElementSibling;
+      // Walk forward to find the last sibling (could be multiple model turns)
+      let last = null;
+      while (sibling) {
+        last = sibling;
+        sibling = sibling.nextElementSibling;
+      }
+      if (last) return last;
+    }
+
+    return null;
+  }
+
+  // ====== HELPER UTILITIES ======
+
+  function isButtonVisible(btn) {
+    return btn.offsetParent !== null &&
+           !btn.disabled &&
+           btn.getAttribute('aria-disabled') !== 'true';
+  }
+
+  // Get the "semantic text" of a button — strip icon ligature noise
+  function btnText(btn) {
+    // Get direct text, ignoring nested icon spans
+    let text = '';
+    for (const node of btn.childNodes) {
+      if (node.nodeType === 3) { // text node
+        text += node.textContent;
+      } else if (node.nodeType === 1) { // element
+        const tag = node.tagName.toLowerCase();
+        const cls = (node.className || '').toString().toLowerCase();
+        // Skip icon elements
+        if (cls.includes('material-symbols') || cls.includes('mat-icon') ||
+            tag === 'mat-icon' || tag === 'svg' || tag === 'canvas' ||
+            cls.includes('icon') || cls.includes('command-key')) continue;
+        text += node.textContent;
+      }
+    }
+    return text.trim().toLowerCase();
+  }
+
+  // Gather searchable text from an element's attributes
+  function gatherText(el) {
+    return [
+      el.getAttribute('placeholder'),
+      el.getAttribute('aria-label'),
+      el.getAttribute('title'),
+      el.getAttribute('formcontrolname'),
+      el.getAttribute('name'),
+      el.getAttribute('id'),
+      el.getAttribute('data-test-id')
+    ].filter(Boolean).map(s => s.toLowerCase()).join(' ');
+  }
+
+  // Check if any keyword appears in the text
+  function matchesAny(text, keywords) {
+    return keywords.some(k => text.includes(k));
+  }
+
+  // Check if an element or its children contain a specific icon
+  function hasIcon(el, iconNames) {
+    const iconEls = el.querySelectorAll(
+      '.material-symbols-outlined, mat-icon, [class*="icon"], svg'
+    );
+    for (const icon of iconEls) {
+      const t = (icon.textContent || '').trim().toLowerCase();
+      if (iconNames.some(name => t === name)) return true;
+    }
+    return false;
+  }
+
+  // Find buttons near a given element (share same container)
+  function findNearbyButtons(anchor, buttonPool) {
+    // Walk up to find the input area container
+    let container = anchor.parentElement;
+    for (let i = 0; i < 6 && container; i++) {
+      const btns = buttonPool.filter(b => container.contains(b));
+      if (btns.length > 0) return btns;
+      container = container.parentElement;
+    }
+    return [];
+  }
+
+  // ====== KEYBOARD HANDLERS ======
+
   // Enter key handler (submit/newline toggle)
   // Shift+Enter = add to queue (always, regardless of enterBehavior)
   document.addEventListener('keydown', (e) => {
@@ -34,14 +355,7 @@
       const msg = target.value.trim();
       if (msg) {
         addToQueue(msg);
-        // Clear textarea
-        const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLTextAreaElement.prototype, 'value'
-        );
-        if (setter && setter.set) {
-          setter.set.call(target, '');
-          target.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+        clearTextarea(target);
       }
       return;
     }
@@ -68,10 +382,19 @@
       const q = data.messageQueue || [];
       q.push(msg);
       chrome.storage.local.set({ messageQueue: q }, () => {
-        // Dispatch custom event so queue UI can react
         document.dispatchEvent(new CustomEvent('vidmind-queue-updated'));
       });
     });
+  }
+
+  function clearTextarea(textarea) {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype, 'value'
+    );
+    if (setter && setter.set) {
+      setter.set.call(textarea, '');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
 
   function clickRunButton() {
@@ -101,67 +424,19 @@
     textarea.selectionStart = textarea.selectionEnd = start + 1;
   }
 
-  function findPromptTextarea(target) {
-    if (target.tagName !== 'TEXTAREA') return null;
-    if (!target.offsetParent || target.getBoundingClientRect().height === 0) return null;
-
-    let score = 0;
-    const placeholder = (target.getAttribute('placeholder') || '').toLowerCase();
-    const ariaLabel = (target.getAttribute('aria-label') || '').toLowerCase();
-    const formControl = (target.getAttribute('formcontrolname') || '').toLowerCase();
-
-    if (placeholder.includes('prompt') || placeholder.includes('type') || placeholder.includes('ask')) score += 3;
-    if (ariaLabel.includes('prompt') || ariaLabel.includes('chat') || ariaLabel.includes('input')) score += 3;
-    if (formControl.includes('prompt')) score += 3;
-    if (target.hasAttribute('cdktextareaautosize')) score += 2;
-    if (window.location.hostname.includes('aistudio.google.com')) score += 1;
-
-    return score > 0 ? target : null;
-  }
-
-  function findRunButton() {
-    const knownSelectors = [
-      'button[jslog*="250044"]',
-      'button[jslog*="225921"]',
-      'ms-run-button button',
-      'button.ctrl-enter-submits'
-    ];
-
-    for (const selector of knownSelectors) {
-      try {
-        const btn = document.querySelector(selector);
-        if (btn && isButtonActive(btn)) return btn;
-      } catch (e) {}
+  function insertText(textarea, text) {
+    textarea.focus();
+    const inserted = document.execCommand('insertText', false, text);
+    if (!inserted) {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      ).set;
+      setter.call(textarea, text);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
-
-    const allButtons = document.querySelectorAll('button, [role="button"]');
-    for (const btn of allButtons) {
-      if (!isButtonActive(btn)) continue;
-      const text = (btn.textContent || '').trim().toLowerCase();
-      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-      const title = (btn.getAttribute('title') || '').toLowerCase();
-
-      if (text === 'run' || text === 'submit' || text === 'send') return btn;
-      if (ariaLabel === 'run' || ariaLabel === 'submit' || ariaLabel === 'send message') return btn;
-      if (title === 'run' || title === 'submit' || title === 'send') return btn;
-
-      const hasRunIcon = Array.from(btn.querySelectorAll('.material-symbols-outlined, mat-icon'))
-        .some(icon => {
-          const t = (icon.textContent || '').trim().toLowerCase();
-          return t === 'send' || t === 'play_arrow' || t === 'arrow_upward';
-        });
-      if (hasRunIcon) return btn;
-    }
-    return null;
   }
 
-  function isButtonActive(button) {
-    return !button.disabled &&
-           button.getAttribute('aria-disabled') !== 'true' &&
-           button.offsetParent !== null;
-  }
-
-  // ====== Floating Queue Panel ======
+  // ====== FLOATING QUEUE PANEL ======
   // Two modes: Queue (waits for generation complete) / Steer (sends immediately)
   // Draggable toggle button with persisted position
 
@@ -241,7 +516,6 @@
     chrome.storage.local.get(['queueTogglePosition'], (data) => {
       const pos = data.queueTogglePosition;
       if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
-        // Clamp to viewport
         const x = Math.max(0, Math.min(pos.x, window.innerWidth - 44));
         const y = Math.max(0, Math.min(pos.y, window.innerHeight - 44));
         wrap.style.left = x + 'px';
@@ -278,7 +552,6 @@
       chrome.storage.sync.set({ queueMode });
       applyModeUI();
     });
-    // Click the slider/thumb area
     slider.addEventListener('click', () => { modeCheckbox.checked = !modeCheckbox.checked; modeCheckbox.dispatchEvent(new Event('change')); });
     thumb.addEventListener('click', () => { modeCheckbox.checked = !modeCheckbox.checked; modeCheckbox.dispatchEvent(new Event('change')); });
 
@@ -311,7 +584,6 @@
       dragging = false;
       toggleBtn.style.cursor = 'grab';
       if (dragMoved) {
-        // Persist position
         const rect = wrap.getBoundingClientRect();
         chrome.storage.local.set({
           queueTogglePosition: { x: rect.left, y: rect.top }
@@ -360,14 +632,7 @@
 
       textarea.focus();
       setTimeout(() => {
-        const inserted = document.execCommand('insertText', false, msg);
-        if (!inserted) {
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLTextAreaElement.prototype, 'value'
-          ).set;
-          setter.call(textarea, msg);
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+        insertText(textarea, msg);
         setTimeout(() => {
           const btn = findRunButton();
           if (btn) { btn.click(); statusEl.textContent = 'sent!'; }
@@ -378,10 +643,8 @@
     }
 
     // --- Queue Mode: polling-based auto-sender ---
-    // Uses setInterval (NOT MutationObserver) to avoid DOM-change false positives.
-    // Two-phase detection: Stop button gone → response text stable for 1s.
     let queueSenderInterval = null;
-    let isSending = false; // mutex
+    let isSending = false;
 
     function ensureQueueSender() {
       if (queueSenderInterval) return;
@@ -403,7 +666,6 @@
           // Phase A: is generation still running?
           if (isGeminiGenerating()) {
             statusEl.textContent = 'waiting...';
-            // Reset stability when generating so Phase B starts fresh after gen ends
             stabilitySnapshot = null;
             stabilityCount = 0;
             return;
@@ -411,7 +673,7 @@
 
           // Phase B: is response text stable? (no new text for 1s)
           const currentLen = getResponseTextLength();
-          statusEl.textContent = 'checking... (' + currentLen + ')';
+          statusEl.textContent = 'stable? (' + currentLen + ')';
           checkTextStability(() => {
             if (isSending) return;
             isSending = true;
@@ -430,14 +692,7 @@
 
             textarea.focus();
             setTimeout(() => {
-              const inserted = document.execCommand('insertText', false, msg);
-              if (!inserted) {
-                const setter = Object.getOwnPropertyDescriptor(
-                  window.HTMLTextAreaElement.prototype, 'value'
-                ).set;
-                setter.call(textarea, msg);
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-              }
+              insertText(textarea, msg);
               setTimeout(() => {
                 const btn = findRunButton();
                 if (btn) btn.click();
@@ -452,19 +707,17 @@
       }, 500);
     }
 
-    // Phase B: check response text stability — no new characters for 1 second
+    // Phase B: check response text stability
     let stabilitySnapshot = null;
     let stabilityCount = 0;
 
     function checkTextStability(onStable) {
       const len = getResponseTextLength();
       if (stabilitySnapshot === null || len !== stabilitySnapshot) {
-        // Text changed or first check — reset
         stabilitySnapshot = len;
         stabilityCount = 0;
-        return; // will re-check on next poll cycle
+        return;
       }
-      // Text same as last check
       stabilityCount++;
       if (stabilityCount >= 2) {
         // Stable for 2 consecutive checks (2 * 500ms = 1s)
@@ -472,47 +725,6 @@
         stabilityCount = 0;
         onStable();
       }
-    }
-
-    function getResponseTextLength() {
-      // Find the last model response turn — note capital "Model" in AI Studio DOM
-      const responses = document.querySelectorAll(
-        '[data-turn-role="Model"], .chat-turn-container.model'
-      );
-      if (responses.length === 0) return 0;
-      const last = responses[responses.length - 1];
-      // Prefer .turn-content to avoid virtual-scroll spacer noise
-      const content = last.querySelector('.turn-content');
-      return ((content || last).textContent || '').length;
-    }
-
-    function isGeminiGenerating() {
-      // Check 1: Stop button visible
-      const buttons = document.querySelectorAll('button, [role="button"]');
-      for (const b of buttons) {
-        const text = (b.textContent || '').trim().toLowerCase();
-        const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-        if ((text === 'stop' || aria === 'stop' || aria === 'stop generating') &&
-            !b.disabled && b.offsetParent !== null) return true;
-      }
-      // Check 2: Animated spinners / progress indicators (same as content-gemini.js)
-      const spinners = document.querySelectorAll(
-        '.spin, mat-progress-spinner, mat-progress-bar, [role="progressbar"], ' +
-        '.mat-mdc-progress-spinner'
-      );
-      for (const el of spinners) {
-        if (el.offsetParent !== null) return true;
-      }
-      // Check 3: Run button shows stop icon (ms-run-button may swap icon during gen)
-      const runBtnContainer = document.querySelector('ms-run-button');
-      if (runBtnContainer) {
-        const icons = runBtnContainer.querySelectorAll('.material-symbols-outlined, mat-icon');
-        for (const icon of icons) {
-          const t = (icon.textContent || '').trim().toLowerCase();
-          if (t === 'stop' || t === 'stop_circle') return true;
-        }
-      }
-      return false;
     }
 
     // --- Queue list ---
@@ -568,14 +780,12 @@
       }
     });
 
-    // Listen for queue updates from keyboard shortcut or inline button
     document.addEventListener('vidmind-queue-updated', () => {
       updateBadge();
       if (panelOpen) refreshQueueList();
       ensureQueueSender();
     });
 
-    // Resume auto-sender if queued messages exist
     chrome.storage.local.get(['messageQueue'], (data) => {
       if ((data.messageQueue || []).length > 0) ensureQueueSender();
     });
@@ -586,18 +796,21 @@
     console.log('[VidMind] Queue UI initialized (Queue/Steer modes)');
   }
 
-  // Inject a "Q+" button into AI Studio's button-wrapper (next to Run)
+  // ====== INLINE QUEUE BUTTON ======
+  // Injected next to AI Studio's Run button via adaptive DOM discovery
+
+  const QUEUE_ICON_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>';
+  const CHECK_ICON_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+
   function injectInlineQueueButton() {
     const INLINE_ID = 'vidmind-inline-queue-btn';
 
     function createBtn() {
-      if (document.getElementById(INLINE_ID)) return; // already injected
+      if (document.getElementById(INLINE_ID)) return;
 
-      const wrapper = document.querySelector('div.button-wrapper, .button-wrapper');
-      if (!wrapper) return;
-
-      const runBtnHost = wrapper.querySelector('ms-run-button');
-      if (!runBtnHost) return;
+      // Adaptive: find the button area near the textarea
+      const insertionPoint = findButtonInsertionPoint();
+      if (!insertionPoint) return;
 
       const btn = document.createElement('button');
       btn.id = INLINE_ID;
@@ -610,17 +823,12 @@
         'border:1px solid transparent;border-radius:50%;',
         'background:transparent;color:#444746;',
         'cursor:pointer;transition:background .15s;',
-        'position:relative;'
+        'position:relative;flex-shrink:0;'
       ].join('');
-      // Inline SVG — playlist_add icon (clean, no font dependency)
-      btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>';
+      btn.innerHTML = QUEUE_ICON_SVG;
 
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'rgba(68,71,70,.08)';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent';
-      });
+      btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(68,71,70,.08)'; });
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
 
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -632,35 +840,78 @@
         if (!msg) return;
 
         addToQueue(msg);
+        clearTextarea(textarea);
 
-        // Clear textarea
-        const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLTextAreaElement.prototype, 'value'
-        );
-        if (setter && setter.set) {
-          setter.set.call(textarea, '');
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-
-        // Brief visual feedback — green check
+        // Brief visual feedback
         btn.style.color = '#34a853';
-        btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+        btn.innerHTML = CHECK_ICON_SVG;
         setTimeout(() => {
           btn.style.color = '#444746';
-          btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H3v2h11v-2zm0-4H3v2h11V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3 16h7v-2H3v2z"/></svg>';
+          btn.innerHTML = QUEUE_ICON_SVG;
         }, 1000);
       });
 
-      // Insert before Run button
-      wrapper.insertBefore(btn, runBtnHost);
+      insertionPoint.parent.insertBefore(btn, insertionPoint.before);
     }
 
-    // AI Studio is SPA — button-wrapper may not exist yet. Observe + retry.
+    function findButtonInsertionPoint() {
+      // Strategy 1: Known wrapper + run button component
+      const wrapperSelectors = [
+        'div.button-wrapper', '.button-wrapper',
+        '[class*="button-wrapper"]', '[class*="action-bar"]',
+        '[class*="toolbar"]'
+      ];
+      const runBtnSelectors = [
+        'ms-run-button', '[class*="run-button"]',
+        '[class*="submit-button"]', '[class*="send-button"]'
+      ];
+
+      for (const ws of wrapperSelectors) {
+        try {
+          const wrapper = document.querySelector(ws);
+          if (!wrapper) continue;
+          for (const rs of runBtnSelectors) {
+            const runHost = wrapper.querySelector(rs);
+            if (runHost) return { parent: wrapper, before: runHost };
+          }
+        } catch (_) {}
+      }
+
+      // Strategy 2: Find Run button and use its parent
+      const runBtn = findRunButton();
+      if (runBtn) {
+        // Walk up to find the host component (custom element or wrapper div)
+        let host = runBtn;
+        for (let i = 0; i < 3; i++) {
+          if (host.parentElement && host.parentElement.children.length > 1) {
+            return { parent: host.parentElement, before: host };
+          }
+          host = host.parentElement;
+          if (!host) break;
+        }
+        if (runBtn.parentElement) {
+          return { parent: runBtn.parentElement, before: runBtn };
+        }
+      }
+
+      return null;
+    }
+
+    // Observe DOM for SPA navigation — throttled to avoid perf impact
+    let createTimer = null;
+    function throttledCreate() {
+      if (createTimer) return;
+      createTimer = setTimeout(() => {
+        createTimer = null;
+        createBtn();
+      }, 300);
+    }
+
     createBtn();
-    const observer = new MutationObserver(() => { createBtn(); });
+    const observer = new MutationObserver(throttledCreate);
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Also re-check on navigation (SPA route changes)
+    // SPA route change detection
     let lastUrl = location.href;
     setInterval(() => {
       if (location.href !== lastUrl) {
@@ -670,12 +921,8 @@
     }, 1000);
   }
 
-  function findAnyTextarea() {
-    const all = Array.from(document.querySelectorAll('textarea'));
-    return all.find(t => t.offsetParent !== null && t.getBoundingClientRect().height > 0) || null;
-  }
+  // ====== INIT ======
 
-  // Only show if enabled in settings
   chrome.storage.sync.get(['showQueueFloat'], (result) => {
     if (result.showQueueFloat === false) return;
     if (document.body) { initQueueUI(); } else { document.addEventListener('DOMContentLoaded', initQueueUI); }
