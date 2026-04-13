@@ -381,9 +381,20 @@
     console.log('[VidMind] Queue UI injected');
   }
 
-  if (document.body) {
-    initQueueUI();
-  } else {
-    document.addEventListener('DOMContentLoaded', initQueueUI);
-  }
+  // Only show queue UI if enabled in settings (default: on)
+  chrome.storage.sync.get(['showQueueFloat'], (result) => {
+    if (result.showQueueFloat === false) return;
+    if (document.body) { initQueueUI(); } else { document.addEventListener('DOMContentLoaded', initQueueUI); }
+  });
+
+  // React to setting changes in real-time
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace !== 'sync' || !changes.showQueueFloat) return;
+    const wrap = document.getElementById('vidmind-q-wrap');
+    if (changes.showQueueFloat.newValue === false) {
+      if (wrap) wrap.style.display = 'none';
+    } else {
+      if (wrap) { wrap.style.display = ''; } else { initQueueUI(); }
+    }
+  });
 })();

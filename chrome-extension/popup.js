@@ -98,6 +98,11 @@ document.getElementById('enterToSubmit').addEventListener('change', (e) => {
   chrome.storage.sync.set({ enterBehavior: enterBehavior });
 });
 
+// Save queue float setting
+document.getElementById('showQueueFloat').addEventListener('change', (e) => {
+  chrome.storage.sync.set({ showQueueFloat: e.target.checked });
+});
+
 // Save prompt handler
 savePromptBtn.addEventListener('click', () => {
   const prompt = customPromptInput.value.trim();
@@ -148,10 +153,10 @@ async function loadShortcut() {
   }
 
   // Load auto switch back setting
-  chrome.storage.sync.get(['autoSwitchBack', 'enterBehavior'], (result) => {
+  chrome.storage.sync.get(['autoSwitchBack', 'enterBehavior', 'showQueueFloat'], (result) => {
     document.getElementById('autoSwitchBack').checked = result.autoSwitchBack !== false;
-    // Default to 'submit' if not set, so checkbox is checked by default
     document.getElementById('enterToSubmit').checked = result.enterBehavior !== 'newline';
+    document.getElementById('showQueueFloat').checked = result.showQueueFloat !== false; // default on
   });
 }
 
