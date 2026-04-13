@@ -460,6 +460,12 @@
           background:#ea4335;color:#fff;font-size:10px;font-weight:700;
           min-width:16px;height:16px;border-radius:8px;
           display:none;align-items:center;justify-content:center;padding:0 3px;"></span>
+        <span id="vidmind-q-dismiss" title="Hide floating button (re-enable in extension settings)" style="
+          position:absolute;top:-6px;left:-6px;
+          width:18px;height:18px;border-radius:50%;
+          background:#5f6368;color:#fff;font-size:11px;font-weight:700;
+          display:none;align-items:center;justify-content:center;
+          cursor:pointer;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.3);">\u2715</span>
       </div>
       <div id="vidmind-q-panel" style="
         display:none;width:280px;background:#fff;border-radius:12px;
@@ -511,6 +517,31 @@
     const toggleLabel = document.getElementById('vidmind-q-toggle-label');
     const slider = document.getElementById('vidmind-q-slider');
     const thumb = document.getElementById('vidmind-q-thumb');
+
+    const dismissBtn = document.getElementById('vidmind-q-dismiss');
+
+    // --- Show dismiss × on hover, hide on leave ---
+    toggleBtn.addEventListener('mouseenter', () => {
+      dismissBtn.style.display = 'flex';
+    });
+    toggleBtn.addEventListener('mouseleave', () => {
+      // Small delay so user can reach the × button
+      setTimeout(() => {
+        if (!dismissBtn.matches(':hover')) dismissBtn.style.display = 'none';
+      }, 200);
+    });
+    dismissBtn.addEventListener('mouseleave', () => {
+      dismissBtn.style.display = 'none';
+    });
+
+    // --- Click × to hide the floating widget entirely ---
+    dismissBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      wrap.style.display = 'none';
+      // Persist the setting — user re-enables from extension popup
+      chrome.storage.sync.set({ showQueueFloat: false });
+    });
 
     // --- Load persisted position ---
     chrome.storage.local.get(['queueTogglePosition'], (data) => {
