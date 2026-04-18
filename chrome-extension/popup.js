@@ -20,6 +20,9 @@ const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const customizeShortcutBtn = document.getElementById('customizeShortcut');
 const alertBox = document.getElementById('alertBox'); // New element
 const langSelect = document.getElementById('promptLanguage'); // New element
+const modelSelectEl = document.getElementById('modelSelect');
+const modelCustomEl = document.getElementById('modelCustom');
+const DEFAULT_MODEL = 'gemini-flash-latest';
 
 // Add Cmd+Enter / Ctrl+Enter to save prompt
 customPromptInput.addEventListener('keydown', (e) => {
@@ -68,18 +71,71 @@ function switchTab(tabName) {
   }
 }
 
+function populateModelOptions(dynamicModels) {
+  if (!dynamicModels || dynamicModels.length === 0) return;
+  // Preserve the auto and custom sentinel options, replace the rest
+  const customOpt = modelSelectEl.querySelector('option[value="__custom__"]');
+  const autoOpt = modelSelectEl.querySelector('option[value=""]');
+  modelSelectEl.innerHTML = '';
+  if (autoOpt) modelSelectEl.appendChild(autoOpt);
+  for (const m of dynamicModels) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+    modelSelectEl.appendChild(opt);
+  }
+  if (customOpt) modelSelectEl.appendChild(customOpt);
+}
+
 // Load saved prompt & language
-chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'enterBehavior', 'promptLanguage'], (result) => {
+Promise.all([
+  new Promise(r => chrome.storage.sync.get(
+    ['customPrompt', 'autoSwitchBack', 'enterBehavior', 'promptLanguage', 'selectedModel'], r)),
+  new Promise(r => chrome.storage.local.get(['availableModels'], r))
+]).then(([result, localResult]) => {
   if (result.customPrompt) {
     customPromptInput.value = result.customPrompt;
   }
-  
+
   const currentLang = result.promptLanguage || 'en';
   langSelect.value = currentLang;
   updatePlaceholder(currentLang);
 
+  // Populate dynamic model list if cached from AI Studio scrape
+  if (localResult.availableModels?.models?.length) {
+    populateModelOptions(localResult.availableModels.models);
+  }
+
+  // Initialize model selector (default: latest Flash)
+  const savedModel = result.selectedModel === undefined ? DEFAULT_MODEL : result.selectedModel;
+  const presetValues = Array.from(modelSelectEl.options).map(o => o.value);
+  if (presetValues.includes(savedModel)) {
+    modelSelectEl.value = savedModel;
+    modelCustomEl.style.display = 'none';
+  } else {
+    modelSelectEl.value = '__custom__';
+    modelCustomEl.value = savedModel;
+    modelCustomEl.style.display = 'block';
+  }
+
   // Update button text
   analyzeBtn.textContent = chrome.i18n.getMessage('btnAnalyze') || 'Analyze with Gemini';
+});
+
+modelSelectEl.addEventListener('change', () => {
+  const choice = modelSelectEl.value;
+  if (choice === '__custom__') {
+    modelCustomEl.style.display = 'block';
+    modelCustomEl.focus();
+    chrome.storage.sync.set({ selectedModel: modelCustomEl.value.trim() });
+  } else {
+    modelCustomEl.style.display = 'none';
+    chrome.storage.sync.set({ selectedModel: choice });
+  }
+});
+
+modelCustomEl.addEventListener('input', () => {
+  chrome.storage.sync.set({ selectedModel: modelCustomEl.value.trim() });
 });
 
 langSelect.addEventListener('change', () => {
