@@ -5,14 +5,23 @@
   const data = await chrome.storage.local.get('pendingAnalysis');
   if (!data.pendingAnalysis) return;
 
-  const { videoUrl, prompt, timestamp, returnToTabId } = data.pendingAnalysis;
+  const { videoUrl, prompt, timestamp, returnToTabId, selectedModel } = data.pendingAnalysis;
 
   if (Date.now() - timestamp > 30000) {
     await chrome.storage.local.remove('pendingAnalysis');
     return;
   }
 
-  console.log('[VidMind] Processing:', videoUrl);
+  console.log('[VidMind] Processing:', videoUrl, 'model:', selectedModel);
+
+  // --- Step 0: Ensure selected model (best-effort, must not block analysis) ---
+  if (selectedModel) {
+    try {
+      await ensureModel(selectedModel);
+    } catch (e) {
+      console.warn('[VidMind] Model switch failed, continuing with current:', e);
+    }
+  }
 
   // --- Step 1: Wait for textarea (MutationObserver, instant reaction) ---
   const textarea = await waitForCondition(
@@ -392,4 +401,136 @@ function startHeartbeat() {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ====== MODEL LIST CAPTURE ======
+// Persist discovered models so the popup dropdown stays in sync with AI Studio.
+
+function captureModelList(rows) {
+  try {
+    const models = [];
+    const seen = new Set();
+    for (const row of rows) {
+      const rawId = (row.id || '').replace(/^model-carousel-row-models\//i, '').trim();
+      if (!rawId || seen.has(rawId)) continue;
+      const name = (row.querySelector('[data-test-id="model-name"]')?.textContent || rawId).trim();
+      models.push({ id: rawId, name });
+      seen.add(rawId);
+    }
+    if (models.length === 0) return;
+    chrome.storage.local.set({
+      availableModels: { models, fetchedAt: Date.now() }
+    });
+    console.log('[VidMind] Captured model list:', models.length, 'models');
+  } catch (e) {
+    console.warn('[VidMind] Failed to capture model list:', e);
+  }
+}
+
+// Standalone scrape — silent open/close when no pending analysis and cache is stale.
+// Runs in background on plain AI Studio visits so popup stays fresh.
+(async function scrapeModelsIfStale() {
+  const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const { pendingAnalysis, availableModels } = await chrome.storage.local.get([
+    'pendingAnalysis', 'availableModels'
+  ]);
+  if (pendingAnalysis) return; // ensureModel() will handle capture
+  const fresh = availableModels && (Date.now() - (availableModels.fetchedAt || 0)) < STALE_MS;
+  if (fresh) return;
+
+  // Wait until AI Studio has booted enough to have the selector card
+  const card = await waitForCondition(
+    () => document.querySelector('.model-selector-card, [class*="model-selector-card"]'),
+    10000,
+    'model card (scrape)'
+  );
+  if (!card) return;
+
+  card.click();
+  await sleep(250);
+
+  const rows = await waitForCondition(
+    () => {
+      const r = document.querySelectorAll('ms-model-carousel-row, [id^="model-carousel-row-"]');
+      return r.length > 0 ? r : null;
+    },
+    4000,
+    'carousel rows (scrape)'
+  );
+  if (rows) captureModelList(Array.from(rows));
+
+  // Close silently
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+})();
+
+// ====== MODEL SWITCHING ======
+// AI Studio exposes the current model via a card (.model-selector-card).
+// Clicking it opens a carousel of <ms-model-carousel-row> entries, each with
+// id="model-carousel-row-models/<modelId>" and a [data-test-id="model-name"].
+// We match by model ID substring (robust against display-name rewording).
+
+function getCurrentModelId() {
+  const card = document.querySelector('.model-selector-card, [class*="model-selector"]');
+  if (!card) return null;
+  // Look for a readable model label inside the card
+  const label = card.querySelector('[data-test-id="model-name"], .model-name, [class*="model-name"]');
+  const text = (label?.textContent || card.textContent || '').trim().toLowerCase();
+  return text || null;
+}
+
+function modelMatches(rowEl, targetId) {
+  const target = targetId.toLowerCase();
+  const rowId = (rowEl.id || '').toLowerCase();
+  if (rowId.includes(target)) return true;
+  const name = (rowEl.querySelector('[data-test-id="model-name"]')?.textContent || '').trim().toLowerCase();
+  if (name && name.includes(target.replace(/-/g, ' '))) return true;
+  // Fallback: any attribute containing the id
+  const attrs = Array.from(rowEl.attributes || []).map(a => (a.value || '').toLowerCase()).join(' ');
+  return attrs.includes(target);
+}
+
+async function ensureModel(targetModelId) {
+  if (!targetModelId) return;
+  const current = getCurrentModelId();
+  if (current && current.includes(targetModelId.toLowerCase())) {
+    console.log('[VidMind] Model already set:', current);
+    return;
+  }
+
+  // Open the model selector
+  const selectorCard = await waitForCondition(
+    () => document.querySelector('.model-selector-card, [class*="model-selector-card"]'),
+    4000,
+    'model selector card'
+  );
+  if (!selectorCard) return;
+
+  selectorCard.click();
+  await sleep(200);
+
+  // Wait for carousel rows to appear
+  const rows = await waitForCondition(
+    () => {
+      const r = document.querySelectorAll('ms-model-carousel-row, [id^="model-carousel-row-"]');
+      return r.length > 0 ? r : null;
+    },
+    4000,
+    'model carousel rows'
+  );
+  if (!rows) return;
+
+  // Capture the full list while the carousel is open (free scrape)
+  captureModelList(Array.from(rows));
+
+  const match = Array.from(rows).find(r => modelMatches(r, targetModelId));
+  if (match) {
+    const clickable = match.querySelector('button, [role="button"]') || match;
+    clickable.click();
+    console.log('[VidMind] Switched to model:', targetModelId);
+    await sleep(300);
+  } else {
+    console.warn('[VidMind] Target model not found in carousel:', targetModelId);
+    // Close the picker by pressing Escape so analysis can proceed
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
 }

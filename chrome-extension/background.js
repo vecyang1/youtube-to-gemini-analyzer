@@ -169,7 +169,7 @@ async function handleVideoAnalysis(videoUrl, inlinePrompt = null, providedTitle 
   }
 
   // Meanwhile, fetch storage
-  const settingsPromise = chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'promptLanguage']);
+  const settingsPromise = chrome.storage.sync.get(['customPrompt', 'autoSwitchBack', 'promptLanguage', 'selectedModel']);
 
   const [tab, settings] = await Promise.all([tabPromise, settingsPromise]);
   const tabId = tab.id;
@@ -178,6 +178,7 @@ async function handleVideoAnalysis(videoUrl, inlinePrompt = null, providedTitle 
   const defaultLangPrompt = DEFAULT_PROMPTS[promptLanguage] || DEFAULT_PROMPTS['en'];
   const prompt = inlinePrompt || settings.customPrompt || defaultLangPrompt;
   const autoSwitchBack = settings.autoSwitchBack === true; // Default false to prevent network timeouts when tab is backgrounded
+  const selectedModel = settings.selectedModel === undefined ? 'gemini-flash-latest' : settings.selectedModel;
 
   // Extract video info
   const videoId = new URL(videoUrl).searchParams.get('v');
@@ -191,7 +192,8 @@ async function handleVideoAnalysis(videoUrl, inlinePrompt = null, providedTitle 
       videoUrl: videoUrl,
       prompt: prompt,
       timestamp: Date.now(),
-      returnToTabId: autoSwitchBack ? returnToTabId : null
+      returnToTabId: autoSwitchBack ? returnToTabId : null,
+      selectedModel: selectedModel
     }
   });
 
