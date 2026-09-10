@@ -11,7 +11,7 @@ chrome://extensions/
 # Enable Developer Mode (top-right toggle)
 # Click "Load unpacked"
 # Select this folder:
-/Users/vecsatfoxmailcom/Documents/A-coding/26.03.02 yt-to-gemini/chrome-extension
+./chrome-extension
 ```
 
 ### 2. Test It (3 minutes)

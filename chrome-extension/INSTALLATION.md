@@ -14,7 +14,7 @@
 ## Step 3: Load the Extension
 
 1. Click the "Load unpacked" button (appears after enabling Developer mode)
-2. Navigate to this folder: `/Users/vecsatfoxmailcom/Documents/A-coding/26.03.02 yt-to-gemini/chrome-extension`
+2. Navigate to this folder: `./chrome-extension`
 3. Click "Select" or "Open"
 
 ## Step 4: Verify Installation

@@ -47,7 +47,7 @@ chrome://extensions/
 # 3. Click "Load unpacked"
 
 # 4. Select folder:
-/Users/vecsatfoxmailcom/Documents/A-coding/26.03.02 yt-to-gemini/chrome-extension
+./chrome-extension
 ```
 
 ## Usage Flow

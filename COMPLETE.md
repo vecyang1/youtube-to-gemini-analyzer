@@ -52,7 +52,7 @@ chrome-extension/
 
 3. **Load Extension**
    - Click "Load unpacked"
-   - Select folder: `/Users/vecsatfoxmailcom/Documents/A-coding/26.03.02 yt-to-gemini/chrome-extension`
+   - Select folder: `./chrome-extension`
 
 ## Usage (3 Clicks)
 
