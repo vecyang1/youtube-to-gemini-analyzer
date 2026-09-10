@@ -11,7 +11,7 @@ chrome://extensions/
 # Enable Developer Mode (top-right toggle)
 # Click "Load unpacked"
 # Select this folder:
-/path/to/youtube-to-gemini-analyzer/chrome-extension
+./chrome-extension
 ```
 
 ### 2. Test It (3 minutes)

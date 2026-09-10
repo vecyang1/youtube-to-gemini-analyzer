@@ -47,7 +47,7 @@ chrome://extensions/
 # 3. Click "Load unpacked"
 
 # 4. Select folder:
-/path/to/youtube-to-gemini-analyzer/chrome-extension
+./chrome-extension
 ```
 
 ## Usage Flow

@@ -52,7 +52,7 @@ chrome-extension/
 
 3. **Load Extension**
    - Click "Load unpacked"
-   - Select folder: `/path/to/youtube-to-gemini-analyzer/chrome-extension`
+   - Select folder: `./chrome-extension`
 
 ## Usage (3 Clicks)
 
