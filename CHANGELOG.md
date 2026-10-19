@@ -5,7 +5,13 @@ All notable changes to `VidMind` (YouTube to Gemini Analyzer) will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.2] - 2026-10-04
+## [1.3.2] - 2026-10-19
+
+### Added
+- Chrome Web Store official store assets: 128x128 icon, 1280x800 screenshots, 440x280 small promo tile, and 1400x560 marquee promo tile.
+- Automated asset generation pipeline (`scripts/generate-cws-assets.cjs`) producing 24-bit zero-alpha PNG assets.
+- Complete CWS store listing configuration, privacy practices disclosures, and reviewer test credentials.
+- Staged on developer console as Draft item (`jicdkhlcejlialfbhajpiebopnffmnlj`).
 
 ### Changed
 - Maintenance: Add .pytest_cache to .gitignore (`e24650a`).
